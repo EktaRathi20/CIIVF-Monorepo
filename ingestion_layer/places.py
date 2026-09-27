@@ -2,28 +2,39 @@
 import os
 import requests
 import json
+import math
 from dotenv import load_dotenv
-from ingestion_layer.constant import REGION_COORDS
+from ingestion_layer.constant import get_region_coords, REGION_DATA
 
 load_dotenv()
 
+def _distance_meters(lat_a, lon_a, lat_b, lon_b):
+    earth_radius_meters = 6371000
+    lat_delta = math.radians(lat_b - lat_a)
+    lon_delta = math.radians(lon_b - lon_a)
+    value = (
+        math.sin(lat_delta / 2) ** 2
+        + math.cos(math.radians(lat_a))
+        * math.cos(math.radians(lat_b))
+        * math.sin(lon_delta / 2) ** 2
+    )
+    return 2 * earth_radius_meters * math.asin(math.sqrt(value))
+
+
 def fetch_critical_infrastructure(region_key="vizag", radius_meters=5000):
     google_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
-    coords = REGION_COORDS.get(region_key, REGION_COORDS["vizag"])
-    
-    fallback_data = {
-        "hospitals": [
-            {"name": "King George Hospital (Demo)", "address": "Maharanipeta, VSKP", "lat": 17.705, "lon": 83.303}
-        ],
-        "shelters": [
-            {"name": "GVMC Cyclone Shelter Ward 17 (Demo)", "address": "Coastal Road", "lat": 17.710, "lon": 83.300}
-        ]
-    }
-
+    coords = get_region_coords(region_key)
     if not google_api_key:
-        return fallback_data
+        return {
+            "hospitals": [],
+            "shelters": [],
+            "source_errors": {
+                "hospitals": "GOOGLE_MAPS_API_KEY is not configured.",
+                "shelters": "GOOGLE_MAPS_API_KEY is not configured.",
+            },
+        }
 
-    facilities = {"hospitals": [], "shelters": []}
+    facilities = {"hospitals": [], "shelters": [], "source_errors": {}}
 
     # API Headers required for Places API
     headers = {
@@ -32,54 +43,59 @@ def fetch_critical_infrastructure(region_key="vizag", radius_meters=5000):
         "X-Goog-FieldMask": "places.displayName,places.location,places.formattedAddress"
     }
 
-    try:
-        # NEARBY SEARCH: Strict filtering for Hospitals
-        hospital_url = "https://places.googleapis.com/v1/places:searchNearby"
-        hospital_payload = {
-            "includedTypes": ["hospital"],
-            "maxResultCount": 5,
-            "locationRestriction": {
-                "circle": {
-                    "center": {"latitude": coords["lat"], "longitude": coords["lon"]},
-                    "radius": radius_meters
-                }
+    def add_results(kind, url, payload):
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=15)
+            if not response.ok:
+                try:
+                    provider_message = response.json().get("error", {}).get("message")
+                except (ValueError, AttributeError):
+                    provider_message = None
+                facilities["source_errors"][kind] = (
+                    f"Google Places returned HTTP {response.status_code}: "
+                    f"{provider_message or response.reason}"
+                )
+                return
+
+            for place in response.json().get("places", []):
+                location = place.get("location", {})
+                latitude = location.get("latitude")
+                longitude = location.get("longitude")
+                if latitude is None or longitude is None:
+                    continue
+                if _distance_meters(coords["lat"], coords["lon"], latitude, longitude) > radius_meters:
+                    continue
+                facilities[kind].append({
+                    "name": place.get("displayName", {}).get("text"),
+                    "address": place.get("formattedAddress"),
+                    "lat": latitude,
+                    "lon": longitude,
+                })
+        except (requests.RequestException, ValueError) as error:
+            facilities["source_errors"][kind] = f"Google Places request failed: {error}"
+
+    hospital_payload = {
+        "includedTypes": ["hospital"],
+        "maxResultCount": 5,
+        "locationRestriction": {
+            "circle": {
+                "center": {"latitude": coords["lat"], "longitude": coords["lon"]},
+                "radius": radius_meters,
             }
-        }
-        
-        h_resp = requests.post(hospital_url, json=hospital_payload, headers=headers)
-        if h_resp.status_code == 200:
-            for p in h_resp.json().get("places", []):
-                facilities["hospitals"].append({
-                    "name": p.get("displayName", {}).get("text"),
-                    "address": p.get("formattedAddress"),
-                    "lat": p.get("location", {}).get("latitude"),
-                    "lon": p.get("location", {}).get("longitude")
-                })
+        },
+    }
+    add_results("hospitals", "https://places.googleapis.com/v1/places:searchNearby", hospital_payload)
 
-        # TEXT SEARCH: Natural language query for Shelters (since it isn't a strict primaryType)
-        shelter_url = "https://places.googleapis.com/v1/places:searchText"
-        shelter_payload = {
-            "textQuery": f"cyclone emergency shelter community center near {region_key}",
-            "locationBias": {
-                "circle": {
-                    "center": {"latitude": coords["lat"], "longitude": coords["lon"]},
-                    "radius": radius_meters
-                }
+    shelter_payload = {
+        "textQuery": f"cyclone emergency shelter community center near {REGION_DATA[region_key]['name']}",
+        "locationBias": {
+            "circle": {
+                "center": {"latitude": coords["lat"], "longitude": coords["lon"]},
+                "radius": radius_meters,
             },
-            "pageSize": 5
-        }
-        
-        s_resp = requests.post(shelter_url, json=shelter_payload, headers=headers)
-        if s_resp.status_code == 200:
-            for p in s_resp.json().get("places", []):
-                facilities["shelters"].append({
-                    "name": p.get("displayName", {}).get("text"),
-                    "address": p.get("formattedAddress"),
-                    "lat": p.get("location", {}).get("latitude"),
-                    "lon": p.get("location", {}).get("longitude")
-                })
+        },
+        "pageSize": 5,
+    }
+    add_results("shelters", "https://places.googleapis.com/v1/places:searchText", shelter_payload)
 
-        return facilities
-
-    except Exception as e:
-        return fallback_data
+    return facilities

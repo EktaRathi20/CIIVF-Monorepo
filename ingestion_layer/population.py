@@ -1,14 +1,9 @@
 import ee
 from datetime import datetime
-from ingestion_layer.constant import REGION_COORDS
+from ingestion_layer.constant import get_region_coords
 
 def fetch_population(region_key="vizag"):
-    coords = REGION_COORDS.get(region_key, REGION_COORDS["vizag"])
-    fallback_demographics = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "region_target": region_key,
-        "total_population": 145230,
-    }
+    coords = get_region_coords(region_key)
 
     try:
         center_point = ee.Geometry.Point([coords["lon"], coords["lat"]])
@@ -30,17 +25,25 @@ def fetch_population(region_key="vizag"):
         ).getInfo()
 
         raw_population = pop_reduction.get("population")
-        if raw_population is not None and raw_population > 0:
-            calculated_population = int(raw_population)
-        else:
-            calculated_population = fallback_demographics["total_population_at_risk"]
+        if raw_population is None or raw_population <= 0:
+            return {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "region_target": region_key,
+                "total_population": None,
+                "source_error": "WorldPop returned no population pixels for this area.",
+            }
         
         return {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "region_target": region_key,
-            "total_population": calculated_population,
+            "total_population": int(raw_population),
         }
 
     except Exception as e:
         print(f"⚠️ [POPULATION] Error: {e}.")
-        return fallback_demographics
+        return {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "region_target": region_key,
+            "total_population": None,
+            "source_error": str(e),
+        }

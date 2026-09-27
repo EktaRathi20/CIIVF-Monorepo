@@ -31,6 +31,11 @@ export const HistoricalDisastersView: React.FC<HistoricalDisastersViewProps> = (
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
+      {onBackToOverview && (
+          <button onClick={onBackToOverview} className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200">
+            <ArrowLeft size={14} /> Back to overview
+          </button>
+        )}
       <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center">
@@ -41,11 +46,7 @@ export const HistoricalDisastersView: React.FC<HistoricalDisastersViewProps> = (
             <p className="text-xs text-slate-500 mt-1">{regionName} · Data returned by the history API</p>
           </div>
         </div>
-        {onBackToOverview && (
-          <button onClick={onBackToOverview} className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200">
-            <ArrowLeft size={14} /> Back to overview
-          </button>
-        )}
+        
       </section>
 
       <section className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">

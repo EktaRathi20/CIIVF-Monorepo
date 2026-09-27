@@ -1,16 +1,13 @@
 import React from 'react';
-import { Users, Home, Cross, Info } from 'lucide-react';
-import { CityLocation } from '../types';
+import { Home, Cross, Info } from 'lucide-react';
 import { InfrastructureResponse } from '../api';
 
 interface BottomRowCardsProps {
-  city: CityLocation;
   infrastructure: InfrastructureResponse | null;
   isLightMode?: boolean;
 }
 
 export const BottomRowCards: React.FC<BottomRowCardsProps> = ({
-  city,
   infrastructure,
   isLightMode = true,
 }) => {
@@ -21,24 +18,12 @@ export const BottomRowCards: React.FC<BottomRowCardsProps> = ({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mt-4">
-      <section className={`border rounded-xl p-3.5 shadow-sm ${cardClass}`}>
-        <h3 className={`flex items-center gap-1.5 font-bold text-sm mb-3 ${textClass}`}>
-          <Users size={16} className="text-blue-600" /> Population
-        </h3>
-        <div className={`text-2xl font-bold font-mono ${textClass}`}>{city.populationFormatted}</div>
-        <p className={`text-[11px] mt-1 ${mutedClass}`}>
-          {city.populationFormatted === 'Unavailable'
-            ? city.evidenceQuality.items.find(source => source.label === 'Population data')?.detail ?? 'Population data unavailable from the backend.'
-            : 'Total population reported by the population API'}
-        </p>
-      </section>
 
       <section className={`border rounded-xl p-3.5 shadow-sm ${cardClass}`}>
         <div className="flex items-center justify-between mb-2">
           <h3 className={`flex items-center gap-1.5 font-bold text-sm ${textClass}`}>
             <Home size={15} className="text-emerald-600" /> Nearby Facilities
           </h3>
-          <span className={`text-[10px] ${mutedClass}`}>API results</span>
         </div>
         {!infrastructure ? (
           <p className={`text-xs ${mutedClass}`}>Facility data is unavailable.</p>

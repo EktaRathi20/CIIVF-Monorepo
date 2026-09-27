@@ -81,17 +81,9 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
               <h2 className={`text-base font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>
                 Task Management & Evacuation Command
               </h2>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                isLightMode
-                  ? 'bg-rose-100 text-rose-800 border-rose-300'
-                  : 'bg-rose-950 text-rose-400 border border-rose-800'
-              }`}>
-                Ward 17 Red Alert
-              </span>
+              
             </div>
-            <p className={`text-xs mt-0.5 ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
-              Active overlay: Red Box (Ward 17 Embankment) & Green Line (Safe Logistics Corridor via EM Bypass).
-            </p>
+           
           </div>
         </div>
 
@@ -103,37 +95,6 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
           <Send size={15} />
           <span>Issue Targeted Evacuation</span>
         </button>
-      </div>
-
-      {/* Map with Ward 17 Red Box & Green Safe Corridor Overlay */}
-      <div className="space-y-2">
-        <div className={`flex items-center justify-between text-xs px-1 ${
-          isLightMode ? 'text-slate-600' : 'text-slate-400'
-        }`}>
-          <div className="flex items-center gap-3">
-            <span className={`flex items-center gap-1.5 font-semibold ${isLightMode ? 'text-rose-700' : 'text-rose-400'}`}>
-              <span className="w-3 h-3 bg-red-500/40 border border-red-500 rounded-xs inline-block" />
-              Red Box: Ward 17 (Vulnerable Embankment)
-            </span>
-            <span className={`flex items-center gap-1.5 font-semibold ${isLightMode ? 'text-emerald-700' : 'text-emerald-400'}`}>
-              <span className="w-4 h-1 bg-emerald-500 inline-block" />
-              Green Line: Safe Logistics Corridor (EM Bypass)
-            </span>
-          </div>
-          <span className="font-mono text-[11px]">GIS Layer: Active Incident Ward</span>
-        </div>
-
-        <MapComponent
-          showMangroveLayer={showMangroveLayer}
-          onToggleMangrove={onToggleMangrove}
-          showHistoricalLayer={showHistoricalLayer}
-          onToggleHistorical={onToggleHistorical}
-          showWard17Box={true}
-          showSafeCorridor={true}
-          systemStatusLabel="Active Ward 17 Evacuation Corridor"
-          systemStatusColor="amber"
-          isLightMode={isLightMode}
-        />
       </div>
 
       {/* Clean Kanban-Style Board (Pending, In-Progress, Done) for Municipal Tasks */}

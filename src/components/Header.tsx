@@ -174,8 +174,8 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Officer Summary */}
                 <div className="p-3 bg-slate-50 rounded-xl mb-1.5 border border-slate-200/80">
                   <div className="font-bold text-slate-900 text-sm">{officerName}</div>
-                  <div className="text-slate-500 text-[11px]">{officerRole}</div>
-                  <div className="text-slate-400 text-[10px] font-mono mt-0.5 truncate">{officerDept}</div>
+                  {/* <div className="text-slate-500 text-[11px]">{officerRole}</div> */}
+                  {/* <div className="text-slate-400 text-[10px] font-mono mt-0.5 truncate">{officerDept}</div> */}
                   <div className="text-blue-600 text-[10px] font-mono mt-1 truncate">{officerEmail}</div>
                 </div>
 
@@ -186,14 +186,14 @@ export const Header: React.FC<HeaderProps> = ({
                       setIsProfileDropdownOpen(false);
                       onOpenSettings();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition-colors text-left font-medium"
+                    className="w-full flex items-center gap-2.5 px-1 py-1 rounded-xl hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition-colors text-left font-medium"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                      <Settings size={15} />
+                    <div className="w-5 h-5 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                      <Settings size={10} />
                     </div>
                     <div>
                       <div className="font-bold text-slate-900">Settings</div>
-                      <div className="text-[10px] text-slate-500">Thresholds, telemetry & GIS layers</div>
+                      {/* <div className="text-[10px] text-slate-500">Thresholds, telemetry & GIS layers</div> */}
                     </div>
                   </button>
 
@@ -204,14 +204,14 @@ export const Header: React.FC<HeaderProps> = ({
                         setIsProfileDropdownOpen(false);
                         onOpenHistoricalDisasters();
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-slate-700 transition-colors text-left"
+                      className="w-full flex items-center gap-2.5 px-1 py-1 rounded-xl hover:bg-slate-50 text-slate-700 transition-colors text-left"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                        <History size={15} />
+                      <div className="w-5 h-5 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <History size={10} />
                       </div>
                       <div>
                         <div className="font-semibold text-slate-900">Historical Archive</div>
-                        <div className="text-[10px] text-slate-500">Past cyclone & surge footprint records</div>
+                        {/* <div className="text-[10px] text-slate-500">Past cyclone & surge footprint records</div> */}
                       </div>
                     </button>
                   )}
@@ -223,25 +223,17 @@ export const Header: React.FC<HeaderProps> = ({
                         setIsProfileDropdownOpen(false);
                         onLogout();
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-rose-50 text-rose-700 transition-colors text-left"
+                      className="w-full flex items-center gap-2.5 px-1 py-1 rounded-xl hover:bg-rose-50 text-rose-700 transition-colors text-left"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                        <LogOut size={15} />
+                      <div className="w-5 h-5 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                        <LogOut size={10} />
                       </div>
                       <div>
                         <div className="font-bold text-rose-900">Switch Role / Sign Out</div>
-                        <div className="text-[10px] text-rose-600">Return to operational role login</div>
                       </div>
                     </button>
                   )}
 
-                  {/* Agency Provenance */}
-                  <div className="px-3 py-2 text-[10px] text-slate-400 border-t border-slate-100 mt-1 flex items-center justify-between">
-                    <span className="flex items-center gap-1 font-mono">
-                      <Shield size={11} className="text-blue-600" /> IMD · GEE · Copernicus
-                    </span>
-                    <span className="text-emerald-600 font-semibold">Verified</span>
-                  </div>
                 </div>
               </div>
             )}

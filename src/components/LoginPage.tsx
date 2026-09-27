@@ -102,19 +102,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-lg font-bold tracking-tight text-slate-900 font-sans">ClimaGuard</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 font-semibold">
-                Command v4.2
-              </span>
             </div>
             <div className="text-[11px] text-slate-500">
               Multi-Hazard Early Warning & Logistics Command
             </div>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs text-slate-500 font-mono hidden sm:flex">
-          <Shield className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Section 34 DMA Compliance Active</span>
         </div>
       </header>
 
@@ -267,7 +259,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Official Email or Officer Service ID
+                  Official Email
                 </label>
                 <input
                   type="text"
@@ -280,7 +272,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Secure Password / 2FA Security Token
+                  Password
                 </label>
                 <input
                   type="password"
@@ -323,12 +315,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           )}
         </div>
       </main>
-
-      {/* Clean Light Footer */}
-      <footer className="px-6 py-4 border-t border-slate-200 bg-white text-center text-xs text-slate-500 font-mono flex flex-col sm:flex-row items-center justify-between gap-2">
-        <span>National Multi-Hazard Early Warning Ingest System</span>
-        <span>Authorized Emergency Responders Only · Official Use Only</span>
-      </footer>
     </div>
   );
 };

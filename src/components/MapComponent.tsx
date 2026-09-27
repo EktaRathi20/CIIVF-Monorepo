@@ -53,7 +53,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     : [17.6868, 83.2185];
 
   return (
-    <section className="relative h-[440px] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-xs md:h-[480px]">
+    <section className="relative h-[440px] w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-xs md:h-[480px] z-0">
       <MapContainer key={cityLabel} center={center} zoom={8} scrollWheelZoom className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

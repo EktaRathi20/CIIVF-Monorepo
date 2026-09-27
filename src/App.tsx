@@ -354,7 +354,6 @@ export default function App() {
                         <span className="text-[11px] font-medium text-slate-600">{selectedCity.forecastSummary}</span>
                       </div>
                     </div>
-                    <ChevronRight size={14} className="text-slate-400" />
                   </div>
                 </div>
               </div>
@@ -408,7 +407,6 @@ export default function App() {
 
                   {/* Bottom Row: Population Exposure, Shelters, and Evacuation Routes */}
                   <BottomRowCards
-                    city={selectedCity}
                     infrastructure={regionResponses?.infrastructure ?? null}
                     isLightMode={true}
                   />

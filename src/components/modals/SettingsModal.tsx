@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  X, Settings, Bell, Shield, Database, Radio, MessageCircle,
-  Check, Sliders, RefreshCw, Layers, MapPin, AlertTriangle
+  X, Settings, Bell, Shield, Database, MessageCircle,
+  Check, Sliders,
 } from 'lucide-react';
 import { api, WhatsAppConfigurationResponse } from '../../api';
 
@@ -15,14 +15,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<'general' | 'thresholds' | 'gis' | 'alerts' | 'provenance'>('general');
-  const [telemetryInterval, setTelemetryInterval] = useState('30s');
   const [defaultCity, setDefaultCity] = useState('Kolkata');
-  const [windWarningThreshold, setWindWarningThreshold] = useState(130);
-  const [surgeWarningThreshold, setSurgeWarningThreshold] = useState(1.8);
-  const [autoSirenEnabled, setAutoSirenEnabled] = useState(true);
-  const [geeLiveSync, setGeeLiveSync] = useState(true);
-  const [copernicusSarSync, setCopernicusSarSync] = useState(true);
-  const [imdDopplerFeed, setImdDopplerFeed] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [whatsappEnabled, setWhatsappEnabled] = useState(() => localStorage.getItem('ciivf-whatsapp-enabled') === 'true');
   const [whatsappNumber, setWhatsappNumber] = useState(() => localStorage.getItem('ciivf-whatsapp-number') ?? '');
@@ -110,8 +103,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Settings size={20} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Emergency Platform Settings</h2>
-              <p className="text-xs text-slate-500">Configure alert parameters, telemetry sources, and municipal thresholds</p>
+              <h2 className="text-base font-bold text-slate-900">Settings</h2>
             </div>
           </div>
           <button 
@@ -134,28 +126,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           >
             <Sliders size={14} />
             General & Telemetry
-          </button>
-          <button
-            onClick={() => setActiveTab('thresholds')}
-            className={`py-3 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
-              activeTab === 'thresholds'
-                ? 'border-blue-600 text-blue-600 font-semibold'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <AlertTriangle size={14} />
-            Early Warning Thresholds
-          </button>
-          <button
-            onClick={() => setActiveTab('gis')}
-            className={`py-3 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
-              activeTab === 'gis'
-                ? 'border-blue-600 text-blue-600 font-semibold'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Layers size={14} />
-            GIS & Earth Observation
           </button>
           <button
             onClick={() => setActiveTab('alerts')}
@@ -204,150 +174,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <p className="text-[11px] text-slate-500 mt-1">Sets the initial coastal municipality loaded on session start.</p>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-800 mb-1.5">
-                  Sensor Telemetry Refresh Rate
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  {['15s (Critical)', '30s (Standard)', '60s (Battery Saver)'].map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => setTelemetryInterval(opt)}
-                      className={`p-2.5 rounded-xl border text-center transition-colors font-medium ${
-                        telemetryInterval === opt 
-                          ? 'border-blue-600 bg-blue-50 text-blue-700' 
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <div className="pt-3 border-t border-slate-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-slate-800">Automated Siren Broadcast (Common Alerting Protocol)</div>
-                    <div className="text-[11px] text-slate-500">Auto-trigger coastal municipal sirens when T-Landfall drops below 12 hours</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={autoSirenEnabled}
-                    onChange={(e) => setAutoSirenEnabled(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
-                  />
-                </div>
-              </div>
             </div>
-          )}
-
-          {activeTab === 'thresholds' && (
-            <div className="space-y-5">
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <label className="text-xs font-semibold text-slate-800">
-                    High-Velocity Wind Warning Trigger
-                  </label>
-                  <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                    {windWarningThreshold} km/h
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="90"
-                  max="200"
-                  step="5"
-                  value={windWarningThreshold}
-                  onChange={(e) => setWindWarningThreshold(Number(e.target.value))}
-                  className="w-full accent-blue-600 cursor-pointer"
-                />
-                <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                  <span>90 km/h (Gale)</span>
-                  <span>130 km/h (Very Severe)</span>
-                  <span>200 km/h (Super Cyclone)</span>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-200">
-                <div className="flex justify-between items-center mb-1.5">
-                  <label className="text-xs font-semibold text-slate-800">
-                    Parametric Flood Inundation Trigger Height
-                  </label>
-                  <span className="font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    {surgeWarningThreshold} meters
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0.8"
-                  max="3.5"
-                  step="0.1"
-                  value={surgeWarningThreshold}
-                  onChange={(e) => setSurgeWarningThreshold(Number(e.target.value))}
-                  className="w-full accent-emerald-600 cursor-pointer"
-                />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  When verified water levels exceed this height across municipal gauge telemetry, state parametric relief liquidity is automatically pre-cleared.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'gis' && (
-            <div className="space-y-4">
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <div>
-                      <div className="font-semibold text-slate-800">Google Earth Engine (GEE) Inundation Layers</div>
-                      <div className="text-[11px] text-slate-500">High-resolution NDWI water index and coastal elevation mesh</div>
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={geeLiveSync}
-                    onChange={(e) => setGeeLiveSync(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <div>
-                      <div className="font-semibold text-slate-800">Copernicus Sentinel-1 SAR (Radar) Penetration</div>
-                      <div className="text-[11px] text-slate-500">Cloud-penetrating synthetic aperture radar for 24/7 storm tracking</div>
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={copernicusSarSync}
-                    onChange={(e) => setCopernicusSarSync(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <div>
-                      <div className="font-semibold text-slate-800">IMD Doppler Weather Radar Feed (DWR Kolkata & Paradip)</div>
-                      <div className="text-[11px] text-slate-500">Radial velocity and rain reflectivity updated every 10 minutes</div>
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={imdDopplerFeed}
-                    onChange={(e) => setImdDopplerFeed(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
+          )}  
           {activeTab === 'alerts' && (
             <div className="max-w-xl space-y-4">
               <div>

@@ -34,7 +34,6 @@ export const WeatherHazardChart: React.FC<WeatherHazardChartProps> = ({
     <div className={`${cardBg} rounded-xl p-3.5 flex flex-col justify-between transition-colors`}>
       <div className="flex items-center justify-between mb-3">
         <h3 className={`font-bold text-sm ${headingText}`}>7-Day Weather Forecast</h3>
-        <span className={`text-xs flex items-center gap-1 ${labelText}`}>API forecast <ArrowRight size={12} /></span>
       </div>
 
       {chartForecast.length === 0 ? (

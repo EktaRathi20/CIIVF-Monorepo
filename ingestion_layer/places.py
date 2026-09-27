@@ -1,4 +1,3 @@
-# ingestion_layer/places.py
 import os
 import requests
 import json

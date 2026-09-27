@@ -1,4 +1,3 @@
-# ingestion_layer/imd.py
 import os
 import requests
 import json

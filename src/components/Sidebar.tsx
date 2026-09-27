@@ -25,7 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isNotificationView = false,
   onSelectNotificationView,
   onOpenAlerts,
-  alertsCount = 3,
+  alertsCount = 0,
 }) => {
   // Project flow modes - Baseline intelligence removed per user instruction
   const projectFlowItems: {
@@ -120,9 +120,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 />
                 <span>Historical Disasters</span>
               </div>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                7
-              </span>
             </button>
 
             {/* Notifications - renamed from Active Alerts per user prompt */}

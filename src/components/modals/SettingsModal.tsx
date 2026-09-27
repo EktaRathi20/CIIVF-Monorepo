@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
-  X, Settings, Bell, Shield, Database, Radio, 
+  X, Settings, Bell, Shield, Database, Radio, MessageCircle,
   Check, Sliders, RefreshCw, Layers, MapPin, AlertTriangle
 } from 'lucide-react';
+import { api, WhatsAppConfigurationResponse } from '../../api';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -23,6 +24,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [copernicusSarSync, setCopernicusSarSync] = useState(true);
   const [imdDopplerFeed, setImdDopplerFeed] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [whatsappEnabled, setWhatsappEnabled] = useState(() => localStorage.getItem('ciivf-whatsapp-enabled') === 'true');
+  const [whatsappNumber, setWhatsappNumber] = useState(() => localStorage.getItem('ciivf-whatsapp-number') ?? '');
+  const [whatsappCode, setWhatsappCode] = useState('');
+  const [whatsappAction, setWhatsappAction] = useState<'subscribe' | 'unsubscribe'>('subscribe');
+  const [whatsappStep, setWhatsappStep] = useState<'idle' | 'code-sent' | 'verified'>(() => localStorage.getItem('ciivf-whatsapp-verified') === 'true' ? 'verified' : 'idle');
+  const [whatsappConfiguration, setWhatsappConfiguration] = useState<WhatsAppConfigurationResponse | null>(null);
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
+  const [whatsappBusy, setWhatsappBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'alerts') return;
+    const controller = new AbortController();
+    api.getWhatsAppConfiguration(controller.signal)
+      .then(setWhatsappConfiguration)
+      .catch((error: Error) => setWhatsappError(error.message));
+    return () => controller.abort();
+  }, [activeTab, isOpen]);
 
   if (!isOpen) return null;
 
@@ -32,6 +50,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setSavedSuccess(false);
       onClose();
     }, 1000);
+  };
+
+  const handleStartWhatsAppVerification = async () => {
+    if (!/^\+[1-9]\d{7,14}$/.test(whatsappNumber.trim())) {
+      setWhatsappError('Enter a valid international number in E.164 format, such as +14155552671.');
+      return;
+    }
+    setWhatsappBusy(true);
+    setWhatsappError(null);
+    try {
+      await api.startWhatsAppVerification(whatsappNumber.trim());
+      setWhatsappStep('code-sent');
+      setWhatsappCode('');
+    } catch (error) {
+      setWhatsappError((error as Error).message);
+    } finally {
+      setWhatsappBusy(false);
+    }
+  };
+
+  const handleCheckWhatsAppVerification = async () => {
+    setWhatsappBusy(true);
+    setWhatsappError(null);
+    try {
+      await api.checkWhatsAppVerification(whatsappNumber.trim(), whatsappCode.trim(), whatsappAction);
+      if (whatsappAction === 'subscribe') {
+        localStorage.setItem('ciivf-whatsapp-enabled', 'true');
+        localStorage.setItem('ciivf-whatsapp-number', whatsappNumber.trim());
+        localStorage.setItem('ciivf-whatsapp-verified', 'true');
+        setWhatsappEnabled(true);
+        setWhatsappStep('verified');
+      } else {
+        localStorage.removeItem('ciivf-whatsapp-enabled');
+        localStorage.removeItem('ciivf-whatsapp-number');
+        localStorage.removeItem('ciivf-whatsapp-verified');
+        setWhatsappEnabled(false);
+        setWhatsappNumber('');
+        setWhatsappStep('idle');
+      }
+      setWhatsappCode('');
+    } catch (error) {
+      setWhatsappError((error as Error).message);
+    } finally {
+      setWhatsappBusy(false);
+    }
   };
 
   return (
@@ -93,6 +156,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           >
             <Layers size={14} />
             GIS & Earth Observation
+          </button>
+          <button
+            onClick={() => setActiveTab('alerts')}
+            className={`py-3 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+              activeTab === 'alerts'
+                ? 'border-blue-600 text-blue-600 font-semibold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Bell size={14} />
+            Notifications
           </button>
           <button
             onClick={() => setActiveTab('provenance')}
@@ -270,6 +344,81 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     className="w-4 h-4 rounded text-blue-600"
                   />
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'alerts' && (
+            <div className="max-w-xl space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Optional WhatsApp alerts</h3>
+                <p className="mt-1 text-xs leading-relaxed text-slate-600">WhatsApp is optional. Dashboard alerts continue regardless of this setting.</p>
+              </div>
+              <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 p-3">
+                <span>
+                  <span className="block text-xs font-semibold text-slate-900">Send climate alerts to WhatsApp</span>
+                  <span className="mt-0.5 block text-[11px] text-slate-500">Phone ownership is verified before subscribing or unsubscribing.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={whatsappEnabled}
+                  onChange={event => {
+                    setWhatsappEnabled(event.target.checked);
+                    setWhatsappAction(event.target.checked ? 'subscribe' : 'unsubscribe');
+                    setWhatsappStep('idle');
+                    setWhatsappCode('');
+                    setWhatsappError(null);
+                  }}
+                  className="h-4 w-4 accent-emerald-600"
+                />
+              </label>
+              <label className="block text-xs font-semibold text-slate-800">
+                WhatsApp number
+                <input
+                  type="tel"
+                  value={whatsappNumber}
+                  onChange={event => setWhatsappNumber(event.target.value)}
+                  disabled={whatsappStep === 'code-sent'}
+                  placeholder="+14155552671"
+                  autoComplete="tel"
+                  className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal disabled:bg-slate-100 disabled:text-slate-400"
+                />
+              </label>
+              {whatsappStep === 'code-sent' ? (
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-slate-800">
+                    WhatsApp verification code
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={whatsappCode}
+                      onChange={event => setWhatsappCode(event.target.value.replace(/\D/g, '').slice(0, 10))}
+                      className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"
+                    />
+                  </label>
+                  <button type="button" onClick={handleCheckWhatsAppVerification} disabled={whatsappBusy || whatsappCode.length < 4} className="rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                    {whatsappBusy ? 'Checking…' : whatsappAction === 'subscribe' ? 'Verify and subscribe' : 'Verify and unsubscribe'}
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={handleStartWhatsAppVerification} disabled={whatsappBusy || !whatsappConfiguration?.verification_configured} className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                  {whatsappBusy ? 'Sending code…' : whatsappAction === 'subscribe' ? 'Send WhatsApp verification code' : 'Verify opt-out'}
+                </button>
+              )}
+              {whatsappStep === 'verified' && whatsappEnabled && (
+                <p className="text-xs font-medium text-emerald-800">WhatsApp number verified and subscribed.</p>
+              )}
+              {whatsappConfiguration && !whatsappConfiguration.verification_configured && (
+                <p className="text-xs text-amber-900">Twilio Verify is not configured. Add backend Twilio credentials to enable opt-in.</p>
+              )}
+              {whatsappConfiguration?.verification_configured && !whatsappConfiguration.delivery_configured && (
+                <p className="text-xs text-amber-900">Verification is configured, but WhatsApp message delivery needs a Messaging Service and approved Content Template.</p>
+              )}
+              {whatsappError && <p role="alert" className="text-xs text-rose-700">{whatsappError}</p>}
+              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+                <MessageCircle size={15} className="mt-0.5 shrink-0" />
+                <p>By verifying, you consent to receive climate-alert WhatsApp messages. The backend stores the verified number in its local SQLite database. Use the toggle and verify again to unsubscribe. Twilio credentials stay on the backend.</p>
               </div>
             </div>
           )}

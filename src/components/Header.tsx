@@ -4,11 +4,11 @@ import {
   Settings, History, Shield, LogOut, CheckCircle2, User
 } from 'lucide-react';
 import { CityLocation } from '../types';
-import { CITIES } from '../data/mockData';
 import { OfficerUser } from './LoginPage';
 
 interface HeaderProps {
   selectedCity: CityLocation;
+  availableCities: CityLocation[];
   onSelectCity: (city: CityLocation) => void;
   onOpenNotifications: () => void;
   onOpenSettings: () => void;
@@ -20,6 +20,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   selectedCity,
+  availableCities,
   onSelectCity,
   onOpenNotifications,
   onOpenSettings,
@@ -49,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredCities = CITIES.filter(c => 
+  const filteredCities = availableCities.filter(c =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.region.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -127,15 +128,6 @@ export const Header: React.FC<HeaderProps> = ({
                     <div>
                       <div className="font-semibold text-slate-900">{city.name}</div>
                       <div className="text-[11px] text-slate-500">{city.region}, {city.country}</div>
-                    </div>
-                    <div className="text-right">
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-medium ${
-                        city.riskLevel === 'Red' ? 'bg-red-100 text-red-700 border border-red-200' :
-                        city.riskLevel === 'Orange' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
-                        'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                      }`}>
-                        Risk {city.riskScore}/100
-                      </span>
                     </div>
                   </div>
                 ))}

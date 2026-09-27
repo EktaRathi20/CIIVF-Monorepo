@@ -47,7 +47,7 @@ export interface CityLocation {
   };
   evidenceQuality: {
     rating: string;
-    items: { label: string; available: boolean }[];
+    items: { label: string; available: boolean; detail?: string }[];
     lastAssessment: string;
   };
 }
@@ -69,8 +69,10 @@ export interface MapPOI {
   type: 'shelter' | 'hospital' | 'police' | 'fire' | 'water' | 'transport';
   x: number; // percentage on map SVG
   y: number;
+  lat?: number;
+  lon?: number;
   capacity?: number;
-  status: 'safe' | 'at_risk' | 'operational';
+  status: 'safe' | 'at_risk' | 'operational' | 'unknown';
   details?: string;
 }
 

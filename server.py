@@ -52,7 +52,6 @@ api_app.add_middleware(
 def startup_event():
     try:
         init_gee()
-        ee.Initialize()
         print("Google Earth Engine initialized for API server.")
     except Exception as e:
         print(f"Earth Engine Initialization Warning: {e}")

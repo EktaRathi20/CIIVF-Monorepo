@@ -21,8 +21,14 @@ import { WeatherHazardChart } from './components/WeatherHazardChart';
 import { RightColumnCards } from './components/RightColumnCards';
 import { BottomRowCards } from './components/BottomRowCards';
 
-// Project Flow Mode Components (Baseline Intelligence removed per instruction)
+// Project Flow Mode Components
+import { BaselineModeView } from './components/modes/BaselineModeView';
+import { ThreatDetectionModeView } from './components/modes/ThreatDetectionModeView';
+import { TaskEvacuationModeView } from './components/modes/TaskEvacuationModeView';
+import { LandfallRescueModeView } from './components/modes/LandfallRescueModeView';
+import { InsuranceRecoveryModeView } from './components/modes/InsuranceRecoveryModeView';
 import { SettingsModal } from './components/modals/SettingsModal';
+import { EvacuationModal } from './components/modals/EvacuationModal';
 import { useClimateAlerts } from './useClimateAlerts';
 
 interface RegionResponses {
@@ -137,9 +143,10 @@ export default function App() {
   const selectedRegion = regions[selectedRegionKey];
   const selectedCity = selectedRegion ? buildCity(selectedRegionKey, selectedRegion, regionResponses) : null;
   const availableCities = Object.entries(regions).map(([key, region]) => buildCity(key, region, null));
-  const [currentMode, setCurrentMode] = useState<OperationalMode>('overview');
+  const [currentMode, setCurrentMode] = useState<OperationalMode>('threat');
   const [isHistoricalView, setIsHistoricalView] = useState<boolean>(false);
   const [isNotificationView, setIsNotificationView] = useState<boolean>(false);
+  const [isEvacuationModalOpen, setIsEvacuationModalOpen] = useState(false);
 
   // Global Layer States for Map
   const [showMangroveLayer, setShowMangroveLayer] = useState<boolean>(true);
@@ -413,13 +420,52 @@ export default function App() {
                 </div>
               )}
 
-              {currentMode !== 'overview' && (
-                <section className="bg-white border border-slate-200 rounded-xl p-6">
-                  <h2 className="text-lg font-bold text-slate-900">Workflow unavailable</h2>
-                  <p className="text-sm text-slate-600 mt-2">
-                    This workflow is not connected to a backend API. Tasks, threat assessments, dispatch routes, and recovery claims are not loaded or simulated here.
-                  </p>
-                </section>
+              {currentMode === 'baseline' && (
+                <BaselineModeView
+                  city={selectedCity}
+                  showMangroveLayer={showMangroveLayer}
+                  onToggleMangrove={setShowMangroveLayer}
+                  showHistoricalLayer={showHistoricalLayer}
+                  onToggleHistorical={setShowHistoricalLayer}
+                  isLightMode={true}
+                />
+              )}
+
+              {currentMode === 'threat' && (
+                <ThreatDetectionModeView
+                  city={selectedCity}
+                  showMangroveLayer={showMangroveLayer}
+                  onToggleMangrove={setShowMangroveLayer}
+                  showHistoricalLayer={showHistoricalLayer}
+                  onToggleHistorical={setShowHistoricalLayer}
+                  isLightMode={true}
+                />
+              )}
+
+              {currentMode === 'tasks' && (
+                <TaskEvacuationModeView
+                  city={selectedCity}
+                  showMangroveLayer={showMangroveLayer}
+                  onToggleMangrove={setShowMangroveLayer}
+                  showHistoricalLayer={showHistoricalLayer}
+                  onToggleHistorical={setShowHistoricalLayer}
+                  onOpenEvacuationModal={() => setIsEvacuationModalOpen(true)}
+                  isLightMode={true}
+                />
+              )}
+
+              {currentMode === 'landfall' && (
+                <LandfallRescueModeView
+                  city={selectedCity}
+                  isLightMode={true}
+                />
+              )}
+
+              {currentMode === 'recovery' && (
+                <InsuranceRecoveryModeView
+                  city={selectedCity}
+                  isLightMode={true}
+                />
               )}
             </>
           )}
@@ -430,6 +476,12 @@ export default function App() {
       <SettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+      />
+
+      <EvacuationModal
+        isOpen={isEvacuationModalOpen}
+        onClose={() => setIsEvacuationModalOpen(false)}
+        isLightMode={true}
       />
 
     </div>

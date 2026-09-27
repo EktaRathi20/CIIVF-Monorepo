@@ -1,284 +1,344 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  AlertTriangle, Clock, Gauge, Database, 
-  ArrowRight, ShieldAlert, Sparkles, CheckCircle2, RotateCcw
+  AlertTriangle, Clock, Users, Shield, Send, 
+  CheckCircle2, Map, Radio, MessageSquare, AlertOctagon, X, Route, MapPin
 } from 'lucide-react';
 import { MapComponent } from '../MapComponent';
 import { CityLocation } from '../../types';
 
+// --- DATA MODELS ---
+interface AuditLog {
+  id: string; 
+  type: 'AUTO THREAT' | 'MANUAL PUSH' | 'EVACUATION'; 
+  severity: 'CRITICAL' | 'URGENT' | 'WARNING';
+  subject: string; 
+  directive: string; 
+  recipientsCount: number; 
+  channels: string[]; 
+  dispatchedTime: string; 
+  status: string;
+}
+
+const INITIAL_AUDIT_LOGS: AuditLog[] = [
+  { id: 'log-1', type: 'AUTO THREAT', severity: 'CRITICAL', subject: '🚨 AUTO THREAT: Cyclone Landfall Alert (T-48h)', directive: 'IMD Doppler radar confirms eye trajectory > 150 km/h.', recipientsCount: 5, channels: ['PUSH', 'SMS', 'WHATSAPP'], dispatchedTime: '14 mins ago', status: 'Delivered' },
+  { id: 'log-2', type: 'AUTO THREAT', severity: 'URGENT', subject: '⚠️ AUTO THREAT: Lowland Sensor Breach', directive: 'Sensor #S-17 reached 1.94m threshold. Gates shut.', recipientsCount: 4, channels: ['PUSH', 'SMS'], dispatchedTime: '42 mins ago', status: 'Delivered' },
+];
+
+const WARD_OPTIONS = [
+  { id: 'w17', label: 'Ward 17 (Estuary Zone Alpha)', population: '42,500', route: 'EM Bypass Logistics Corridor', shelters: 'Shelter 1 & Shelter 2' },
+  { id: 'w24', label: 'Ward 24 (Riverbank Settlement)', population: '18,200', route: 'Coastal Highway Evacuation Route', shelters: 'Shelter 4' },
+  { id: 'w58', label: 'Ward 58 (Topsia Wetlands)', population: '31,000', route: 'Northern Arterial Road', shelters: 'Shelter 7 & Shelter 9' },
+  { id: 'w12', label: 'Ward 12 (Industrial Port Sector)', population: '9,450', route: 'Port Authority Heavy Transport Corridor', shelters: 'Shelter 3' },
+  { id: 'w04', label: 'Ward 04 (Historic Old City)', population: '65,000', route: 'Central Bazaar One-Way Conversion Route', shelters: 'Shelters 10, 11, & 12' },
+];
+
 interface ThreatDetectionModeViewProps {
   city: CityLocation;
-  showMangroveLayer: boolean;
+  showMangroveLayer: boolean; 
   onToggleMangrove: (val: boolean) => void;
-  showHistoricalLayer: boolean;
+  showHistoricalLayer: boolean; 
   onToggleHistorical: (val: boolean) => void;
-  isLightMode?: boolean;
+  responses?: any;
 }
 
 export const ThreatDetectionModeView: React.FC<ThreatDetectionModeViewProps> = ({
-  city,
-  showMangroveLayer,
-  onToggleMangrove,
-  showHistoricalLayer,
+  city, 
+  showMangroveLayer, 
+  onToggleMangrove, 
+  showHistoricalLayer, 
   onToggleHistorical,
-  isLightMode = true,
 }) => {
-  // Countdown Timer state: starts at 47 hours, 59 mins, 42 secs
+  // --- STATE ---
   const [secondsRemaining, setSecondsRemaining] = useState<number>(48 * 3600 - 18);
-  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
+  
+  // CAP Modal State
+  const [isEvacModalOpen, setIsEvacModalOpen] = useState(false);
+  const [selectedWardId, setSelectedWardId] = useState<string>('w17');
+  const [channelWEA, setChannelWEA] = useState(true);
+  const [channelSMS, setChannelSMS] = useState(true);
 
-  // Simple "What-If" slider (110 km/h to 170 km/h)
-  const [windSpeed, setWindSpeed] = useState<number>(135);
-
+  // Timer Effect
   useEffect(() => {
-    if (!isTimerRunning) return;
-    const interval = setInterval(() => {
-      setSecondsRemaining(prev => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
+    const interval = setInterval(() => setSecondsRemaining(prev => (prev > 0 ? prev - 1 : 0)), 1000);
     return () => clearInterval(interval);
-  }, [isTimerRunning]);
+  }, []);
 
-  const hours = Math.floor(secondsRemaining / 3600);
-  const minutes = Math.floor((secondsRemaining % 3600) / 60);
-  const seconds = secondsRemaining % 60;
+  const hours = String(Math.floor(secondsRemaining / 3600)).padStart(2, '0');
+  const minutes = String(Math.floor((secondsRemaining % 3600) / 60)).padStart(2, '0');
+  const seconds = String(secondsRemaining % 60).padStart(2, '0');
 
-  // Dynamic calculations based on slider (110 km/h to 170 km/h)
-  // Normalized factor from 0 (at 110) to 1 (at 170)
-  const factor = (windSpeed - 110) / 60;
+  const selectedWardData = WARD_OPTIONS.find(w => w.id === selectedWardId) || WARD_OPTIONS[0];
 
-  const inundationDepth = (0.75 + factor * 1.85).toFixed(2); // 0.75m to 2.60m
-  const surgeHeight = (1.4 + factor * 2.3).toFixed(1); // 1.4m to 3.7m
-  const displacedCount = Math.round(110000 + factor * 510000); // 110,000 to 620,000
-  const wardsAffectedCount = Math.round(14 + factor * 38); // 14 to 52 wards
-  const powerSubstationsRisk = Math.round(12 + factor * 64); // 12% to 76%
-  const dischargeSurgeRate = Math.round(2800 + factor * 4900); // 2800 to 7700 m³/s
+  // --- HANDLERS ---
+  const handleAuthorizeEvacuation = () => {
+    const activeChannels = [];
+    if (channelWEA) activeChannels.push('WEA SIREN');
+    if (channelSMS) activeChannels.push('SMS BLAST');
+
+    const newLog: AuditLog = {
+      id: `log-${Date.now()}`, 
+      type: 'EVACUATION', 
+      severity: 'CRITICAL', 
+      subject: `🚨 CAP EVACUATION: ${selectedWardData.label.toUpperCase()}`,
+      directive: `Mandatory targeted evacuation ordered for ${selectedWardData.population} residents to ${selectedWardData.shelters} via ${selectedWardData.route}.`, 
+      recipientsCount: parseInt(selectedWardData.population.replace(',', '')),
+      channels: activeChannels.length > 0 ? activeChannels : ['SYS LOG'], 
+      dispatchedTime: 'Just now', 
+      status: 'Broadcasting'
+    };
+    
+    setAuditLogs([newLog, ...auditLogs]);
+    setIsEvacModalOpen(false);
+  };
 
   return (
-    <div className="space-y-4">
-      {/* 1. Prominent Countdown Banner matching prompt */}
-      <div className={`border rounded-2xl p-4 sm:p-5 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4 transition-colors ${
-        isLightMode
-          ? 'bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-amber-500/10 border-amber-300'
-          : 'bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 border-amber-600/70'
-      }`}>
-        <div className="flex items-center gap-3.5">
-          <div className={`w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 ${
-            isLightMode
-              ? 'bg-amber-100 border-amber-300 text-amber-800'
-              : 'bg-amber-500/20 border-amber-500/50 text-amber-400'
-          }`}>
-            <Clock size={28} className="animate-spin" style={{ animationDuration: '16s' }} />
+    <div className="space-y-4 w-full animate-in fade-in duration-300">
+      
+      {/* 1. Sleek Top Banner & KPIs */}
+      <div className="space-y-4">
+        {/* Banner */}
+        <div className="bg-gradient-to-r from-amber-50 to-white border border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col xl:flex-row items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-4 w-full xl:w-auto">
+            <div className="w-12 h-12 rounded-xl bg-amber-100 border border-amber-300 text-amber-700 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                T-48 Hours to Landfall
+              </h1>
+              
+            </div>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className={`text-xs uppercase font-mono tracking-widest font-bold ${
-                isLightMode ? 'text-amber-800' : 'text-amber-400'
-              }`}>
-                THREAT DETECTION // AMBER PROTOCOL
-              </span>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-slate-950 uppercase shadow-xs">
-                Phase 2 Active
+          
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full xl:w-auto">
+            {/* Clock */}
+            <div className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-amber-200 rounded-xl shadow-inner flex-1 sm:flex-none">
+              <Clock className="w-4 h-4 text-amber-500 animate-pulse" />
+              <span className="text-lg font-black font-mono text-amber-700 tracking-tight">
+                {hours}:{minutes}:{seconds}
               </span>
             </div>
-            <h1 className={`text-lg sm:text-xl font-extrabold tracking-tight ${
-              isLightMode ? 'text-slate-900' : 'text-white'
-            }`}>
-              T-48 Hours to Landfall
-            </h1>
-            <p className={`text-xs mt-0.5 ${
-              isLightMode ? 'text-slate-600' : 'text-slate-300'
-            }`}>
-              Bay of Bengal Cyclone Yaas-02B rapidly intensifying. Municipal emergency response teams on high alert.
-            </p>
+            
+            {/* Evacuation Button */}
+            <button 
+              onClick={() => setIsEvacModalOpen(true)}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm shadow-sm transition flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-none whitespace-nowrap"
+            >
+              <Send className="w-4 h-4 shrink-0" />
+              <span>Issue Targeted Evacuation Order</span>
+            </button>
           </div>
         </div>
 
-        {/* Live Countdown Clock */}
-        <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border shadow-inner ${
-          isLightMode
-            ? 'bg-white border-amber-300 text-slate-900'
-            : 'bg-slate-950/80 border-amber-700/60'
-        }`}>
-          <div className="text-center min-w-[50px]">
-            <span className={`text-2xl font-mono font-black tabular-nums ${
-              isLightMode ? 'text-amber-800' : 'text-amber-400'
-            }`}>
-              {String(hours).padStart(2, '0')}
-            </span>
-            <span className={`block text-[9px] uppercase tracking-wider font-semibold ${
-              isLightMode ? 'text-slate-500' : 'text-slate-400'
-            }`}>Hours</span>
+        {/* KPIs (Now spanning full width properly) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-center">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Registered Officers</span>
+            <div className="text-sm font-black text-slate-800 flex items-center gap-1.5 mt-1">
+              <Users className="w-4 h-4 text-blue-600"/> 12 Active
+            </div>
           </div>
-          <span className="text-xl font-bold text-amber-500 pb-3">:</span>
-          <div className="text-center min-w-[50px]">
-            <span className={`text-2xl font-mono font-black tabular-nums ${
-              isLightMode ? 'text-amber-800' : 'text-amber-400'
-            }`}>
-              {String(minutes).padStart(2, '0')}
-            </span>
-            <span className={`block text-[9px] uppercase tracking-wider font-semibold ${
-              isLightMode ? 'text-slate-500' : 'text-slate-400'
-            }`}>Mins</span>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-center">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Key Commanders</span>
+            <div className="text-sm font-black text-slate-800 flex items-center gap-1.5 mt-1">
+              <Shield className="w-4 h-4 text-amber-600"/> 5 Officers
+            </div>
           </div>
-          <span className="text-xl font-bold text-amber-500 pb-3">:</span>
-          <div className="text-center min-w-[50px]">
-            <span className={`text-2xl font-mono font-black tabular-nums ${
-              isLightMode ? 'text-amber-800' : 'text-amber-400'
-            }`}>
-              {String(seconds).padStart(2, '0')}
-            </span>
-            <span className={`block text-[9px] uppercase tracking-wider font-semibold ${
-              isLightMode ? 'text-slate-500' : 'text-slate-400'
-            }`}>Secs</span>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-center">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">At-Risk Population</span>
+            <div className="text-sm font-black text-slate-800 flex items-center gap-1.5 mt-1">
+              <AlertOctagon className="w-4 h-4 text-rose-600"/> {city.populationFormatted}
+            </div>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col justify-center">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Dispatches</span>
+            <div className="text-sm font-black text-slate-800 flex items-center gap-1.5 mt-1">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600"/> {auditLogs.length} Logs
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 2. Interactive Map and Dynamic "What-If" Simulation Table Side-by-Side */}
+      {/* 2. Middle Row: Map (Left) + Vertical Audit Log Feed (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Map on Left (7 cols) */}
-        <div className="lg:col-span-7 space-y-2">
-          <div className={`flex items-center justify-between text-xs px-1 ${
-            isLightMode ? 'text-slate-600' : 'text-slate-400'
-          }`}>
-            <span className={`font-semibold ${isLightMode ? 'text-slate-900' : 'text-slate-200'}`}>
-              Hazard Forecast Grid & Risk Projections
-            </span>
-            <span className="text-amber-700 font-mono font-bold">Simulated Gusts: {windSpeed} km/h</span>
+        
+        {/* Interactive Map */}
+        <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl p-1 shadow-sm flex flex-col">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50 rounded-t-xl">
+            <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+              <Map className="w-4 h-4 text-blue-600" />
+              Hazard Forecast Grid & Affected Sectors
+            </h3>
+            <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">Wind: 135 km/h</span>
           </div>
-          <MapComponent
-            showMangroveLayer={showMangroveLayer}
-            onToggleMangrove={onToggleMangrove}
-            showHistoricalLayer={showHistoricalLayer}
-            onToggleHistorical={onToggleHistorical}
-            systemStatusLabel="Threat Level: Amber"
-            systemStatusColor="amber"
-            windSpeedSim={windSpeed}
-            isLightMode={isLightMode}
-          />
+          <div className="h-[480px] w-full relative overflow-hidden rounded-b-xl z-0">
+             <MapComponent
+                showMangroveLayer={showMangroveLayer} 
+                onToggleMangrove={onToggleMangrove}
+                showHistoricalLayer={showHistoricalLayer} 
+                onToggleHistorical={onToggleHistorical}
+                systemStatusLabel="Threat Level: Amber" 
+                systemStatusColor="amber"
+                windSpeedSim={135} 
+                isLightMode={true}
+                pois={[]}
+                cityLabel={city.name}
+                bounds={{min_lat: city.lat - 0.1, max_lat: city.lat + 0.1, min_lon: city.lng - 0.1, max_lon: city.lng + 0.1} as any}
+             />
+          </div>
         </div>
 
-        {/* Dynamic "What-If" Slider & Basic Data Table on Right (5 cols) */}
-        <div className={`lg:col-span-5 border rounded-xl p-4 flex flex-col justify-between shadow-sm transition-colors ${
-          isLightMode
-            ? 'bg-white border-slate-200/90'
-            : 'bg-slate-900 border-slate-800'
-        }`}>
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className={`font-bold text-sm flex items-center gap-1.5 ${
-                  isLightMode ? 'text-slate-900' : 'text-white'
-                }`}>
-                  <Gauge size={16} className={isLightMode ? 'text-amber-600' : 'text-amber-400'} />
-                  <span>"What-If" Landfall Intensity Slider</span>
-                </h3>
-                <p className={`text-[11px] mt-0.5 ${
-                  isLightMode ? 'text-slate-500' : 'text-slate-400'
-                }`}>
-                  Simulate wind velocities from 110 km/h to 170 km/h to forecast urban impact.
+        {/* Vertical Audit Log Feed (Redesigned for Narrow Column) */}
+        <div className="lg:col-span-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden max-h-[530px]">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between z-10">
+            <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-blue-600" /> Dispatch Audit Log
+            </h3>
+            <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded">
+              {auditLogs.length} Records
+            </span>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+            {auditLogs.map((log) => (
+              <div key={log.id} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm hover:border-slate-300 transition-colors">
+                <div className="flex justify-between items-start mb-2">
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${
+                    log.type === 'AUTO THREAT' ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+                    log.type === 'EVACUATION' ? 'bg-rose-50 text-rose-700 border-rose-200' : 
+                    'bg-blue-50 text-blue-700 border-blue-200'
+                  }`}>
+                    {log.type}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-mono">
+                    {log.dispatchedTime}
+                  </span>
+                </div>
+                
+                <h4 className="font-bold text-xs text-slate-900 leading-tight">
+                  {log.subject}
+                </h4>
+                <p className="text-[10px] text-slate-500 mt-1.5 line-clamp-2">
+                  {log.directive}
                 </p>
+                
+                <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex justify-between items-center text-[10px]">
+                  <span className="font-bold text-slate-700">
+                    {log.recipientsCount.toLocaleString()} Target(s)
+                  </span>
+                  <span className="text-emerald-600 font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5"/> 
+                    {log.status}
+                  </span>
+                </div>
               </div>
-              <button
-                onClick={() => setWindSpeed(135)}
-                className={`text-xs p-1 cursor-pointer transition-colors ${
-                  isLightMode ? 'text-slate-400 hover:text-slate-800' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Reset to default forecast (135 km/h)"
-              >
-                <RotateCcw size={14} />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* --- CAP Evacuation Modal --- */}
+      {isEvacModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden border border-slate-200">
+            
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 leading-none">Issue Targeted Evacuation Order</h2>
+                  <p className="text-xs text-slate-500 mt-1">Common Alerting Protocol (CAP) Integration</p>
+                </div>
+              </div>
+              <button onClick={() => setIsEvacModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition cursor-pointer">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Slider Control */}
-            <div className={`p-3 rounded-xl border mb-4 ${
-              isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
-            }`}>
-              <div className="flex justify-between items-center mb-2">
-                <span className={`text-xs font-semibold ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
-                  Simulated Wind Velocity
-                </span>
-                <span className={`text-base font-extrabold font-mono ${
-                  isLightMode ? 'text-amber-800' : 'text-amber-400'
-                }`}>
-                  {windSpeed} <span className="text-xs text-slate-500 font-sans font-normal">km/h</span>
-                </span>
+            {/* Modal Body */}
+            <div className="p-5 space-y-6 bg-white">
+              
+              {/* Target Ward Dropdown Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">Target Municipal Ward / Sector</label>
+                <select 
+                  value={selectedWardId}
+                  onChange={(e) => setSelectedWardId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 hover:bg-slate-100 transition cursor-pointer appearance-none"
+                >
+                  {WARD_OPTIONS.map((ward) => (
+                    <option key={ward.id} value={ward.id}>
+                      {ward.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <input
-                type="range"
-                min="110"
-                max="170"
-                step="5"
-                value={windSpeed}
-                onChange={(e) => setWindSpeed(Number(e.target.value))}
-                className="w-full accent-amber-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-              />
-              <div className={`flex justify-between text-[10px] font-mono mt-1.5 ${
-                isLightMode ? 'text-slate-500 font-medium' : 'text-slate-500'
-              }`}>
-                <span>110 km/h (Cat 1)</span>
-                <span>140 km/h (Cat 2)</span>
-                <span>170 km/h (Cat 3 Extreme)</span>
+
+              {/* Dynamic Data Summary Box */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-slate-600"><Users className="w-4 h-4 text-blue-500" /> Target Evacuation Population:</span>
+                  <span className="font-bold font-mono text-slate-900 tracking-tight">{selectedWardData.population} Residents</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-slate-600"><MapPin className="w-4 h-4 text-emerald-500" /> Designated Receiving Shelters:</span>
+                  <span className="font-bold text-emerald-700 truncate max-w-[200px] text-right" title={selectedWardData.shelters}>{selectedWardData.shelters}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-slate-600"><Route className="w-4 h-4 text-blue-500" /> Designated Safe Route:</span>
+                  <span className="font-bold text-slate-900 truncate max-w-[200px] text-right" title={selectedWardData.route}>{selectedWardData.route}</span>
+                </div>
               </div>
+
+              {/* Broadcast Channels */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">Broadcast Alert Channels</label>
+                <div className="space-y-3">
+                  <label className="flex items-start gap-3 p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition bg-white">
+                    <div className="mt-0.5 text-amber-500"><Radio className="w-5 h-5" /></div>
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-slate-900">Cell Broadcast Siren (WEA)</div>
+                      <div className="text-xs text-slate-500 mt-0.5">High-pitch audible alarm to all mobile devices in geofence</div>
+                    </div>
+                    <input type="checkbox" checked={channelWEA} onChange={() => setChannelWEA(!channelWEA)} className="w-4 h-4 mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                  </label>
+                  
+                  <label className="flex items-start gap-3 p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition bg-white">
+                    <div className="mt-0.5 text-emerald-500"><MessageSquare className="w-5 h-5" /></div>
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-slate-900">Automated SMS Blast</div>
+                      <div className="text-xs text-slate-500 mt-0.5">Bengali, Hindi, and English multi-lingual evacuation notices</div>
+                    </div>
+                    <input type="checkbox" checked={channelSMS} onChange={() => setChannelSMS(!channelSMS)} className="w-4 h-4 mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                  </label>
+                </div>
+              </div>
+
             </div>
 
-            {/* Basic Data Table dynamically updated next to the map */}
-            <div className="text-xs">
-              <div className={`font-semibold mb-2 flex items-center justify-between ${
-                isLightMode ? 'text-slate-800' : 'text-slate-300'
-              }`}>
-                <span>Projected Impact Metrics</span>
-                <span className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-500'}`}>Live Calculated</span>
-              </div>
-
-              <div className={`divide-y border rounded-lg overflow-hidden ${
-                isLightMode
-                  ? 'divide-slate-200 border-slate-200 bg-slate-50/70'
-                  : 'divide-slate-800/80 border-slate-800 bg-slate-950/70'
-              }`}>
-                <div className={`flex justify-between p-2.5 ${isLightMode ? 'hover:bg-slate-100/60' : 'hover:bg-slate-900/40'}`}>
-                  <span className={isLightMode ? 'text-slate-600 font-medium' : 'text-slate-400'}>Projected Inundation Depth</span>
-                  <span className={`font-mono font-bold ${isLightMode ? 'text-rose-700' : 'text-rose-400'}`}>{inundationDepth} m</span>
-                </div>
-                <div className={`flex justify-between p-2.5 ${isLightMode ? 'hover:bg-slate-100/60' : 'hover:bg-slate-900/40'}`}>
-                  <span className={isLightMode ? 'text-slate-600 font-medium' : 'text-slate-400'}>Severely Impacted Wards</span>
-                  <span className={`font-mono font-bold ${isLightMode ? 'text-amber-800' : 'text-amber-400'}`}>{wardsAffectedCount} Wards</span>
-                </div>
-                <div className={`flex justify-between p-2.5 ${isLightMode ? 'hover:bg-slate-100/60' : 'hover:bg-slate-900/40'}`}>
-                  <span className={isLightMode ? 'text-slate-600 font-medium' : 'text-slate-400'}>Storm Surge Height</span>
-                  <span className={`font-mono font-bold ${isLightMode ? 'text-blue-700' : 'text-cyan-400'}`}>+{surgeHeight} m MSL</span>
-                </div>
-                <div className={`flex justify-between p-2.5 ${isLightMode ? 'hover:bg-slate-100/60' : 'hover:bg-slate-900/40'}`}>
-                  <span className={isLightMode ? 'text-slate-600 font-medium' : 'text-slate-400'}>Estimated Displaced Population</span>
-                  <span className={`font-mono font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{displacedCount.toLocaleString()}</span>
-                </div>
-                <div className={`flex justify-between p-2.5 ${isLightMode ? 'hover:bg-slate-100/60' : 'hover:bg-slate-900/40'}`}>
-                  <span className={isLightMode ? 'text-slate-600 font-medium' : 'text-slate-400'}>Substation Submersion Risk</span>
-                  <span className={`font-mono font-bold ${isLightMode ? 'text-orange-700' : 'text-orange-400'}`}>{powerSubstationsRisk}%</span>
-                </div>
-                <div className={`flex justify-between p-2.5 ${isLightMode ? 'hover:bg-slate-100/60' : 'hover:bg-slate-900/40'}`}>
-                  <span className={isLightMode ? 'text-slate-600 font-medium' : 'text-slate-400'}>Hooghly River Discharge Surge</span>
-                  <span className={`font-mono font-bold ${isLightMode ? 'text-blue-700' : 'text-blue-400'}`}>+{dischargeSurgeRate.toLocaleString()} m³/s</span>
-                </div>
-              </div>
+            {/* Modal Footer */}
+            <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
+              <button 
+                onClick={() => setIsEvacModalOpen(false)}
+                className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl transition cursor-pointer shadow-sm"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleAuthorizeEvacuation}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition flex items-center gap-2 shadow-sm cursor-pointer"
+              >
+                <Send className="w-4 h-4" /> Authorize Evacuation
+              </button>
             </div>
-          </div>
 
-          {/* Prompt requirement: Data Provenance text tag at the bottom to build trust */}
-          <div className={`mt-4 pt-3 border-t flex items-center justify-between text-[11px] font-mono ${
-            isLightMode ? 'border-slate-200 text-slate-600' : 'border-slate-800 text-slate-400'
-          }`}>
-            <span className={`font-semibold ${isLightMode ? 'text-slate-800' : 'text-slate-300'}`}>Data Provenance:</span>
-            <span className={`px-2 py-0.5 rounded border ${
-              isLightMode
-                ? 'bg-slate-100 text-slate-800 border-slate-300 font-semibold'
-                : 'bg-slate-800 text-slate-200 border-slate-700'
-            }`}>
-              IMD | GEE | Copernicus
-            </span>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

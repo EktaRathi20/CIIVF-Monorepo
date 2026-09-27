@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   CloudRain, MapPin, ChevronRight
 } from 'lucide-react';
-import { OperationalMode, CityLocation } from './types';
-import { CITIES } from './data/mockData';
+import { MapPOI, OperationalMode, CityLocation } from './types';
+import { api, ApiRegion, CurrentConditionsResponse, ForecastResponse, HistoricalResponse, InfrastructureResponse, PopulationResponse } from './api';
 
 // Layout & Authentication Components
 import { Header } from './components/Header';
@@ -12,7 +12,7 @@ import { LoginPage, OfficerUser, OPERATIONAL_ROLES } from './components/LoginPag
 
 // View Pages
 import { HistoricalDisastersView } from './components/HistoricalDisastersView';
-import { NotificationHubView } from './components/NotificationHubView';
+import { ClimateAlertInbox } from './components/ClimateAlertInbox';
 
 // Overview Dashboard Components
 import { AssessmentCards } from './components/AssessmentCards';
@@ -21,52 +21,207 @@ import { WeatherHazardChart } from './components/WeatherHazardChart';
 import { RightColumnCards } from './components/RightColumnCards';
 import { BottomRowCards } from './components/BottomRowCards';
 
-// Project Flow Mode Components (Baseline Intelligence removed per instruction)
+// Project Flow Mode Components
+import { BaselineModeView } from './components/modes/BaselineModeView';
 import { ThreatDetectionModeView } from './components/modes/ThreatDetectionModeView';
 import { TaskEvacuationModeView } from './components/modes/TaskEvacuationModeView';
 import { LandfallRescueModeView } from './components/modes/LandfallRescueModeView';
 import { InsuranceRecoveryModeView } from './components/modes/InsuranceRecoveryModeView';
-
-// Modals
-import { EvacuationModal } from './components/modals/EvacuationModal';
-import { AIPlanModal } from './components/modals/AIPlanModal';
-import { AlternativeRoutesModal } from './components/modals/AlternativeRoutesModal';
-import { NotificationsModal } from './components/modals/NotificationsModal';
 import { SettingsModal } from './components/modals/SettingsModal';
+import { EvacuationModal } from './components/modals/EvacuationModal';
+import { useClimateAlerts } from './useClimateAlerts';
+
+interface RegionResponses {
+  population: PopulationResponse | null;
+  forecast: ForecastResponse | null;
+  infrastructure: InfrastructureResponse | null;
+  currentConditions: CurrentConditionsResponse | null;
+  currentConditionsError: string | null;
+}
+
+const formatCoordinate = (value: number, positive: string, negative: string) =>
+  `${Math.abs(value).toFixed(4)}° ${value >= 0 ? positive : negative}`;
+
+const buildCity = (
+  id: string,
+  region: ApiRegion,
+  responses: RegionResponses | null,
+): CityLocation => {
+  const forecast = responses?.forecast?.forecast ?? [];
+  const averageHigh = forecast.length
+    ? Math.round(forecast.reduce((sum, day) => sum + day.max_temp_c, 0) / forecast.length)
+    : null;
+  const averageLow = forecast.length
+    ? Math.round(forecast.reduce((sum, day) => sum + day.min_temp_c, 0) / forecast.length)
+    : null;
+  const population = responses?.population?.total_population;
+  const facilityErrors = Object.values(responses?.infrastructure?.source_errors ?? {}).join(' ');
+  const sources = [
+    {
+      label: 'Population data',
+      available: population !== null && population !== undefined && !responses?.population?.source_error,
+      detail: responses?.population?.source_error,
+    },
+    { label: 'Weather forecast', available: responses?.forecast !== null && responses?.forecast !== undefined },
+    {
+      label: 'Current conditions',
+      available: responses?.currentConditions !== null && responses?.currentConditions !== undefined,
+      detail: responses?.currentConditionsError ?? undefined,
+    },
+    {
+      label: 'Hospitals and shelters',
+      available: responses?.infrastructure !== null && responses?.infrastructure !== undefined && Object.keys(responses.infrastructure.source_errors ?? {}).length === 0,
+      detail: facilityErrors || undefined,
+    },
+  ];
+
+  return {
+    id,
+    name: region.name,
+    region: region.name,
+    country: 'India',
+    lat: (region.min_lat + region.max_lat) / 2,
+    lng: (region.min_lon + region.max_lon) / 2,
+    coordinatesFormatted: `${formatCoordinate((region.min_lat + region.max_lat) / 2, 'N', 'S')}, ${formatCoordinate((region.min_lon + region.max_lon) / 2, 'E', 'W')}`,
+    population: population ?? 0,
+    populationFormatted: population == null ? 'Unavailable' : new Intl.NumberFormat('en-IN').format(population),
+    currentTemp: responses?.currentConditions?.temperature_c ?? 0,
+    currentWeather: responses?.currentConditions?.condition ?? 'Unavailable',
+    tempRangeAvg: averageHigh === null || averageLow === null ? 'Unavailable' : `${averageHigh}° / ${averageLow}°C`,
+    forecastSummary: forecast[0]?.condition ?? 'Forecast unavailable',
+    riskScore: 0,
+    riskLevel: 'Normal',
+    officialWarning: { agency: 'Not connected', level: 'Unavailable', title: 'Warning data is not exposed by the backend API.', validity: '', details: '' },
+    operationalRisk: { score: 0, level: 'Unavailable', factors: [] },
+    aiPreparednessBrief: { summary: 'AI preparedness plans are not exposed by the backend API.', detailedPlan: [], rationale: [] },
+    evidenceQuality: {
+      rating: sources.every(source => source.available) ? 'CONNECTED' : 'PARTIAL',
+      items: sources,
+      lastAssessment: 'Current API response',
+    },
+  };
+};
+
+const buildMapPois = (responses: RegionResponses | null, region: ApiRegion): MapPOI[] => {
+  if (!responses?.infrastructure) return [];
+  const project = (facility: { name: string; address: string | null; lat: number | null; lon: number | null }, type: 'shelter' | 'hospital', index: number): MapPOI | null => {
+    if (facility.lat === null || facility.lon === null) return null;
+    return {
+      id: `${type}-${index}-${facility.name}`,
+      name: facility.name,
+      type,
+      lat: facility.lat,
+      lon: facility.lon,
+      x: Math.max(4, Math.min(96, ((facility.lon - region.min_lon) / (region.max_lon - region.min_lon)) * 100)),
+      y: Math.max(4, Math.min(96, ((region.max_lat - facility.lat) / (region.max_lat - region.min_lat)) * 100)),
+      status: 'unknown',
+      details: facility.address ?? 'Address not provided',
+    };
+  };
+  return [
+    ...responses.infrastructure.shelters.map((facility, index) => project(facility, 'shelter', index)),
+    ...responses.infrastructure.hospitals.map((facility, index) => project(facility, 'hospital', index)),
+  ].filter((poi): poi is MapPOI => poi !== null);
+};
 
 export default function App() {
+  const { alerts, unreadCount, connectionState, error: alertsError, markAllRead } = useClimateAlerts();
+
   // Authentication State
   const [currentUser, setCurrentUser] = useState<OfficerUser>(OPERATIONAL_ROLES[0]);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
 
   // App Navigation States
-  const [selectedCity, setSelectedCity] = useState<CityLocation>(CITIES[0]);
-  const [currentMode, setCurrentMode] = useState<OperationalMode>('overview');
+  const [regions, setRegions] = useState<Record<string, ApiRegion>>({});
+  const [selectedRegionKey, setSelectedRegionKey] = useState('vizag');
+  const [regionResponses, setRegionResponses] = useState<RegionResponses | null>(null);
+  const [regionLoading, setRegionLoading] = useState(true);
+  const [regionError, setRegionError] = useState<string | null>(null);
+  const [historicalData, setHistoricalData] = useState<HistoricalResponse | null>(null);
+  const [historicalLoading, setHistoricalLoading] = useState(false);
+  const [historicalError, setHistoricalError] = useState<string | null>(null);
+  const selectedRegion = regions[selectedRegionKey];
+  const selectedCity = selectedRegion ? buildCity(selectedRegionKey, selectedRegion, regionResponses) : null;
+  const availableCities = Object.entries(regions).map(([key, region]) => buildCity(key, region, null));
+  const [currentMode, setCurrentMode] = useState<OperationalMode>('threat');
   const [isHistoricalView, setIsHistoricalView] = useState<boolean>(false);
   const [isNotificationView, setIsNotificationView] = useState<boolean>(false);
-  const [unreadAlerts, setUnreadAlerts] = useState<number>(3);
+  const [isEvacuationModalOpen, setIsEvacuationModalOpen] = useState(false);
 
   // Global Layer States for Map
   const [showMangroveLayer, setShowMangroveLayer] = useState<boolean>(true);
   const [showHistoricalLayer, setShowHistoricalLayer] = useState<boolean>(false);
 
   // Modal States
-  const [isEvacuationModalOpen, setIsEvacuationModalOpen] = useState(false);
-  const [isAiPlanModalOpen, setIsAiPlanModalOpen] = useState(false);
-  const [aiModalMode, setAiModalMode] = useState<'why' | 'plan'>('plan');
-  const [isAlternativeRoutesModalOpen, setIsAlternativeRoutesModalOpen] = useState(false);
-  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  const handleOpenWhy = () => {
-    setAiModalMode('why');
-    setIsAiPlanModalOpen(true);
-  };
+  useEffect(() => {
+    const controller = new AbortController();
+    api.getRegions(controller.signal)
+      .then((data) => {
+        setRegions(data);
+        if (!data[selectedRegionKey]) setSelectedRegionKey(Object.keys(data)[0] ?? '');
+        setRegionError(null);
+      })
+      .catch((error: Error) => {
+        if (error.name !== 'AbortError') setRegionError('Could not load regions. Check that the backend is running.');
+      })
+      .finally(() => setRegionLoading(false));
+    return () => controller.abort();
+  }, []);
 
-  const handleOpenPlan = () => {
-    setAiModalMode('plan');
-    setIsAiPlanModalOpen(true);
-  };
+  useEffect(() => {
+    if (!selectedRegion) return;
+    const controller = new AbortController();
+    setRegionLoading(true);
+    setRegionResponses(null);
+    setRegionError(null);
+    Promise.allSettled([
+      api.getPopulation(selectedRegionKey, controller.signal),
+      api.getForecast(selectedRegionKey, controller.signal),
+      api.getInfrastructure(selectedRegionKey, controller.signal),
+      api.getCurrentConditions(selectedRegionKey, controller.signal),
+    ]).then(([population, forecast, infrastructure, currentConditions]) => {
+      if (controller.signal.aborted) return;
+      setRegionResponses({
+        population: population.status === 'fulfilled' ? population.value : null,
+        forecast: forecast.status === 'fulfilled' ? forecast.value : null,
+        infrastructure: infrastructure.status === 'fulfilled' ? infrastructure.value : null,
+        currentConditions: currentConditions.status === 'fulfilled' ? currentConditions.value : null,
+        currentConditionsError: currentConditions.status === 'rejected' ? currentConditions.reason.message : null,
+      });
+      const failedSources = [population, forecast, infrastructure, currentConditions].filter(result => result.status === 'rejected').length;
+      setRegionError(failedSources ? `${failedSources} data source${failedSources > 1 ? 's' : ''} could not be loaded.` : null);
+    }).finally(() => {
+      if (!controller.signal.aborted) setRegionLoading(false);
+    });
+    return () => controller.abort();
+  }, [selectedRegion, selectedRegionKey]);
+
+  useEffect(() => {
+    if (!isHistoricalView) return;
+    const controller = new AbortController();
+    setHistoricalLoading(true);
+    setHistoricalError(null);
+    setHistoricalData(null);
+    api.getHistory(selectedRegionKey, controller.signal)
+      .then(setHistoricalData)
+      .catch((error: Error) => {
+        if (error.name !== 'AbortError') setHistoricalError(error.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setHistoricalLoading(false);
+      });
+    return () => controller.abort();
+  }, [isHistoricalView, selectedRegionKey]);
+
+  if (regionLoading && !selectedCity) {
+    return <div className="min-h-screen grid place-items-center text-sm text-slate-600">Connecting to the CIIVF API…</div>;
+  }
+
+  if (!selectedCity || !selectedRegion) {
+    return <div className="min-h-screen grid place-items-center p-6 text-center text-sm text-rose-700">{regionError ?? 'No regions were returned by the backend API.'}</div>;
+  }
 
   // If not logged in, render the Login Page matching attached screenshot
   if (!isLoggedIn) {
@@ -85,17 +240,19 @@ export default function App() {
       {/* Top Navigation Bar with Profile Dropdown & Settings */}
       <Header
         selectedCity={selectedCity}
-        onSelectCity={setSelectedCity}
+        availableCities={availableCities}
+        onSelectCity={(city) => setSelectedRegionKey(city.id)}
         onOpenNotifications={() => {
           setIsNotificationView(true);
           setIsHistoricalView(false);
+          markAllRead();
         }}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenHistoricalDisasters={() => {
           setIsHistoricalView(true);
           setIsNotificationView(false);
         }}
-        unreadAlertsCount={unreadAlerts}
+        unreadAlertsCount={unreadCount}
         currentUser={currentUser}
         onLogout={() => setIsLoggedIn(false)}
       />
@@ -117,23 +274,45 @@ export default function App() {
           isNotificationView={isNotificationView}
           onSelectNotificationView={(isNotif) => {
             setIsNotificationView(isNotif);
-            if (isNotif) setIsHistoricalView(false);
+            if (isNotif) {
+              setIsHistoricalView(false);
+              markAllRead();
+            }
           }}
           onOpenAlerts={() => {
             setIsNotificationView(true);
             setIsHistoricalView(false);
+            markAllRead();
           }}
-          alertsCount={unreadAlerts}
+          alertsCount={unreadCount}
         />
 
         {/* Main Content Viewport */}
         <main className="flex-1 p-4 lg:p-6 overflow-x-hidden max-w-[1600px] w-full mx-auto">
+          {regionError && (
+            <div role="status" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {regionError} Some dashboard sections may be incomplete.
+            </div>
+          )}
           {/* 1. If on Notifications Hub View */}
           {isNotificationView ? (
-            <NotificationHubView onBack={() => setIsNotificationView(false)} />
+            <ClimateAlertInbox
+              alerts={alerts}
+              connectionState={connectionState}
+              error={alertsError}
+              selectedRegionKey={selectedRegionKey}
+              regionName={selectedCity.name}
+              onBack={() => setIsNotificationView(false)}
+            />
           ) : isHistoricalView ? (
             /* 2. If on Historical Disasters View */
-            <HistoricalDisastersView onBackToOverview={() => setIsHistoricalView(false)} />
+            <HistoricalDisastersView
+              history={historicalData}
+              isLoading={historicalLoading}
+              error={historicalError}
+              regionName={selectedCity.name}
+              onBackToOverview={() => setIsHistoricalView(false)}
+            />
           ) : (
             /* 3. Main Dashboard & Project Flow Modes */
             <>
@@ -160,10 +339,14 @@ export default function App() {
                   <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border bg-slate-50 border-slate-200">
                     <CloudRain size={20} className="text-blue-600 shrink-0" />
                     <div>
-                      <div className="text-[10px] text-slate-500 font-medium">Current Weather</div>
+                      <div className="text-[10px] text-slate-500 font-medium">Current Conditions</div>
                       <div className="flex items-baseline gap-1.5">
-                        <span className="font-bold text-sm font-mono text-slate-900">{selectedCity.currentTemp}°C</span>
-                        <span className="text-[11px] font-medium text-slate-600">{selectedCity.currentWeather}</span>
+                        <span className="font-bold text-sm font-mono text-slate-900">
+                          {regionResponses?.currentConditions?.temperature_c == null ? 'Unavailable' : `${regionResponses.currentConditions.temperature_c}°C`}
+                        </span>
+                        <span className="max-w-48 truncate text-[11px] font-medium text-slate-600" title={regionResponses?.currentConditions?.condition ?? regionResponses?.currentConditionsError ?? ''}>
+                          {regionResponses?.currentConditions?.condition ?? regionResponses?.currentConditionsError ?? 'Waiting for current weather data'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -178,7 +361,6 @@ export default function App() {
                         <span className="text-[11px] font-medium text-slate-600">{selectedCity.forecastSummary}</span>
                       </div>
                     </div>
-                    <ChevronRight size={14} className="text-slate-400" />
                   </div>
                 </div>
               </div>
@@ -188,11 +370,9 @@ export default function App() {
               {/* 1. Complete Integrated Dashboard (Overview) */}
               {currentMode === 'overview' && (
                 <div className="space-y-4">
-                  {/* 4 Assessment Cards: IMD Warning, Operational Risk, AI Brief, Evidence Quality */}
                   <AssessmentCards
                     city={selectedCity}
-                    onOpenWhyModal={handleOpenWhy}
-                    onOpenPlanModal={handleOpenPlan}
+                    infrastructure={regionResponses?.infrastructure ?? null}
                     isLightMode={true}
                   />
 
@@ -208,27 +388,49 @@ export default function App() {
                         systemStatusLabel="System: Operational"
                         systemStatusColor="amber"
                         isLightMode={true}
+                        pois={buildMapPois(regionResponses, selectedRegion)}
+                        cityLabel={selectedCity.name}
+                        bounds={selectedRegion}
+                        emptyMessage={Object.values(regionResponses?.infrastructure?.source_errors ?? {}).join(' ') || 'The provider returned no facility coordinates for this region.'}
                       />
 
-                      <WeatherHazardChart isLightMode={true} />
+                      <WeatherHazardChart forecast={regionResponses?.forecast?.forecast ?? []} isLightMode={true} />
                     </div>
 
-                    {/* Right Column: Global Climate Vulnerability, Recent Alerts, AI Safety Banner (4 of 12 cols) */}
+                    {/* Right Column: API source status */}
                     <div className="lg:col-span-4">
-                      <RightColumnCards isLightMode={true} />
+                      <RightColumnCards
+                        city={selectedCity}
+                        alerts={alerts}
+                        connectionState={connectionState}
+                        onOpenAlerts={() => {
+                          setIsNotificationView(true);
+                          markAllRead();
+                        }}
+                        isLightMode={true}
+                      />
                     </div>
                   </div>
 
                   {/* Bottom Row: Population Exposure, Shelters, and Evacuation Routes */}
                   <BottomRowCards
-                    city={selectedCity}
-                    onOpenEvacuationRouteModal={() => setIsAlternativeRoutesModalOpen(true)}
+                    infrastructure={regionResponses?.infrastructure ?? null}
                     isLightMode={true}
                   />
                 </div>
               )}
 
-              {/* 2. Threat Detection (Amber Mode) */}
+              {currentMode === 'baseline' && (
+                <BaselineModeView
+                  city={selectedCity}
+                  showMangroveLayer={showMangroveLayer}
+                  onToggleMangrove={setShowMangroveLayer}
+                  showHistoricalLayer={showHistoricalLayer}
+                  onToggleHistorical={setShowHistoricalLayer}
+                  isLightMode={true}
+                />
+              )}
+
               {currentMode === 'threat' && (
                 <ThreatDetectionModeView
                   city={selectedCity}
@@ -240,7 +442,6 @@ export default function App() {
                 />
               )}
 
-              {/* 3. Task Management & Evacuation */}
               {currentMode === 'tasks' && (
                 <TaskEvacuationModeView
                   city={selectedCity}
@@ -253,14 +454,18 @@ export default function App() {
                 />
               )}
 
-              {/* 4. Landfall Rescue (Red Mode) */}
               {currentMode === 'landfall' && (
-                <LandfallRescueModeView city={selectedCity} isLightMode={true} />
+                <LandfallRescueModeView
+                  city={selectedCity}
+                  isLightMode={true}
+                />
               )}
 
-              {/* 5. Insurance & Recovery */}
               {currentMode === 'recovery' && (
-                <InsuranceRecoveryModeView city={selectedCity} isLightMode={true} />
+                <InsuranceRecoveryModeView
+                  city={selectedCity}
+                  isLightMode={true}
+                />
               )}
             </>
           )}
@@ -279,29 +484,6 @@ export default function App() {
         isLightMode={true}
       />
 
-      <AIPlanModal
-        isOpen={isAiPlanModalOpen}
-        onClose={() => setIsAiPlanModalOpen(false)}
-        city={selectedCity}
-        mode={aiModalMode}
-        isLightMode={true}
-      />
-
-      <AlternativeRoutesModal
-        isOpen={isAlternativeRoutesModalOpen}
-        onClose={() => setIsAlternativeRoutesModalOpen(false)}
-        isLightMode={true}
-      />
-
-      <NotificationsModal
-        isOpen={isNotificationsModalOpen}
-        onClose={() => setIsNotificationsModalOpen(false)}
-        onClear={() => {
-          setUnreadAlerts(0);
-          setIsNotificationsModalOpen(false);
-        }}
-        isLightMode={true}
-      />
     </div>
   );
 }

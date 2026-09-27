@@ -121,37 +121,6 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* 1. Critical Alert Banner matching clean light theme */}
-      <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 shadow-2xs text-rose-950 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-rose-100 border border-rose-300 text-rose-700 flex items-center justify-center shrink-0 shadow-2xs">
-              <AlertOctagon size={28} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs uppercase font-mono tracking-wider text-rose-800 font-bold">
-                  CRITICAL RESCUE PROTOCOL // ACTIVE
-                </span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-600 text-white uppercase shadow-2xs">
-                  CODE RED EMERGENCY
-                </span>
-              </div>
-              <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight mt-0.5">
-                Cyclone Landfall in Progress — River Basin Overflows
-              </h1>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Hooghly River tidal surge reaching 3.4m (+1.2m above danger mark). All non-essential vehicular traffic barred.
-              </p>
-            </div>
-          </div>
-
-          <div className="text-right shrink-0 bg-white px-4 py-2 rounded-xl border border-rose-200 shadow-2xs">
-            <div className="text-[10px] text-slate-500 uppercase font-mono">Operations Command</div>
-            <div className="text-sm font-bold text-rose-700 font-mono">100% Emergency Priority</div>
-          </div>
-        </div>
-      </div>
 
       {/* 2. Standard, Clean Chat Interface (Like standard support/dispatch, NOT sci-fi bot) */}
       <div className={`border rounded-xl overflow-hidden shadow-sm flex flex-col h-[520px] transition-colors ${

@@ -4,11 +4,11 @@ import {
   Settings, History, Shield, LogOut, CheckCircle2, User
 } from 'lucide-react';
 import { CityLocation } from '../types';
-import { CITIES } from '../data/mockData';
 import { OfficerUser } from './LoginPage';
 
 interface HeaderProps {
   selectedCity: CityLocation;
+  availableCities: CityLocation[];
   onSelectCity: (city: CityLocation) => void;
   onOpenNotifications: () => void;
   onOpenSettings: () => void;
@@ -20,6 +20,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   selectedCity,
+  availableCities,
   onSelectCity,
   onOpenNotifications,
   onOpenSettings,
@@ -49,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredCities = CITIES.filter(c => 
+  const filteredCities = availableCities.filter(c =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.region.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -128,15 +129,6 @@ export const Header: React.FC<HeaderProps> = ({
                       <div className="font-semibold text-slate-900">{city.name}</div>
                       <div className="text-[11px] text-slate-500">{city.region}, {city.country}</div>
                     </div>
-                    <div className="text-right">
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-medium ${
-                        city.riskLevel === 'Red' ? 'bg-red-100 text-red-700 border border-red-200' :
-                        city.riskLevel === 'Orange' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
-                        'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                      }`}>
-                        Risk {city.riskScore}/100
-                      </span>
-                    </div>
                   </div>
                 ))}
               </div>
@@ -182,8 +174,8 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Officer Summary */}
                 <div className="p-3 bg-slate-50 rounded-xl mb-1.5 border border-slate-200/80">
                   <div className="font-bold text-slate-900 text-sm">{officerName}</div>
-                  <div className="text-slate-500 text-[11px]">{officerRole}</div>
-                  <div className="text-slate-400 text-[10px] font-mono mt-0.5 truncate">{officerDept}</div>
+                  {/* <div className="text-slate-500 text-[11px]">{officerRole}</div> */}
+                  {/* <div className="text-slate-400 text-[10px] font-mono mt-0.5 truncate">{officerDept}</div> */}
                   <div className="text-blue-600 text-[10px] font-mono mt-1 truncate">{officerEmail}</div>
                 </div>
 
@@ -194,14 +186,14 @@ export const Header: React.FC<HeaderProps> = ({
                       setIsProfileDropdownOpen(false);
                       onOpenSettings();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition-colors text-left font-medium"
+                    className="w-full flex items-center gap-2.5 px-1 py-1 rounded-xl hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition-colors text-left font-medium"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                      <Settings size={15} />
+                    <div className="w-5 h-5 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                      <Settings size={10} />
                     </div>
                     <div>
                       <div className="font-bold text-slate-900">Settings</div>
-                      <div className="text-[10px] text-slate-500">Thresholds, telemetry & GIS layers</div>
+                      {/* <div className="text-[10px] text-slate-500">Thresholds, telemetry & GIS layers</div> */}
                     </div>
                   </button>
 
@@ -212,14 +204,14 @@ export const Header: React.FC<HeaderProps> = ({
                         setIsProfileDropdownOpen(false);
                         onOpenHistoricalDisasters();
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-slate-700 transition-colors text-left"
+                      className="w-full flex items-center gap-2.5 px-1 py-1 rounded-xl hover:bg-slate-50 text-slate-700 transition-colors text-left"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                        <History size={15} />
+                      <div className="w-5 h-5 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                        <History size={10} />
                       </div>
                       <div>
                         <div className="font-semibold text-slate-900">Historical Archive</div>
-                        <div className="text-[10px] text-slate-500">Past cyclone & surge footprint records</div>
+                        {/* <div className="text-[10px] text-slate-500">Past cyclone & surge footprint records</div> */}
                       </div>
                     </button>
                   )}
@@ -231,25 +223,17 @@ export const Header: React.FC<HeaderProps> = ({
                         setIsProfileDropdownOpen(false);
                         onLogout();
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-rose-50 text-rose-700 transition-colors text-left"
+                      className="w-full flex items-center gap-2.5 px-1 py-1 rounded-xl hover:bg-rose-50 text-rose-700 transition-colors text-left"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                        <LogOut size={15} />
+                      <div className="w-5 h-5 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                        <LogOut size={10} />
                       </div>
                       <div>
                         <div className="font-bold text-rose-900">Switch Role / Sign Out</div>
-                        <div className="text-[10px] text-rose-600">Return to operational role login</div>
                       </div>
                     </button>
                   )}
 
-                  {/* Agency Provenance */}
-                  <div className="px-3 py-2 text-[10px] text-slate-400 border-t border-slate-100 mt-1 flex items-center justify-between">
-                    <span className="flex items-center gap-1 font-mono">
-                      <Shield size={11} className="text-blue-600" /> IMD · GEE · Copernicus
-                    </span>
-                    <span className="text-emerald-600 font-semibold">Verified</span>
-                  </div>
                 </div>
               </div>
             )}

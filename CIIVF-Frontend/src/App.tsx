@@ -3,7 +3,7 @@ import {
   CloudRain, MapPin, ChevronRight
 } from 'lucide-react';
 import { MapPOI, OperationalMode, CityLocation } from './types';
-import { api, ApiRegion, CurrentConditionsResponse, ForecastResponse, HistoricalResponse, InfrastructureResponse, PopulationResponse } from './api';
+import { api, ApiRegion, CurrentConditionsResponse, DisasterIntelligenceResponse, ForecastResponse, HistoricalResponse, InfrastructureResponse, PopulationResponse } from './api';
 
 // Layout & Authentication Components
 import { Header } from './components/Header';
@@ -36,7 +36,9 @@ interface RegionResponses {
   forecast: ForecastResponse | null;
   infrastructure: InfrastructureResponse | null;
   currentConditions: CurrentConditionsResponse | null;
+  disasterIntelligence: DisasterIntelligenceResponse | null;
   currentConditionsError: string | null;
+  disasterIntelligenceError: string | null;
 }
 
 const formatCoordinate = (value: number, positive: string, negative: string) =>
@@ -103,9 +105,10 @@ const buildCity = (
 };
 
 const buildMapPois = (responses: RegionResponses | null, region: ApiRegion): MapPOI[] => {
-  if (!responses?.infrastructure) return [];
-  const project = (facility: { name: string; address: string | null; lat: number | null; lon: number | null }, type: 'shelter' | 'hospital', index: number): MapPOI | null => {
-    if (facility.lat === null || facility.lon === null) return null;
+  const resources = responses?.disasterIntelligence?.critical_places ?? responses?.infrastructure;
+  if (!resources) return [];
+  const project = (facility: { name: string; address?: string | null; lat?: number | null; lon?: number | null }, type: 'shelter' | 'hospital', index: number): MapPOI | null => {
+    if (facility.lat == null || facility.lon == null) return null;
     return {
       id: `${type}-${index}-${facility.name}`,
       name: facility.name,
@@ -119,8 +122,8 @@ const buildMapPois = (responses: RegionResponses | null, region: ApiRegion): Map
     };
   };
   return [
-    ...responses.infrastructure.shelters.map((facility, index) => project(facility, 'shelter', index)),
-    ...responses.infrastructure.hospitals.map((facility, index) => project(facility, 'hospital', index)),
+    ...(resources.shelters ?? []).map((facility, index) => project(facility, 'shelter', index)),
+    ...(resources.hospitals ?? []).map((facility, index) => project(facility, 'hospital', index)),
   ].filter((poi): poi is MapPOI => poi !== null);
 };
 
@@ -181,16 +184,23 @@ export default function App() {
       api.getForecast(selectedRegionKey, controller.signal),
       api.getInfrastructure(selectedRegionKey, controller.signal),
       api.getCurrentConditions(selectedRegionKey, controller.signal),
-    ]).then(([population, forecast, infrastructure, currentConditions]) => {
+      api.getDisasterIntelligence(selectedRegionKey, controller.signal),
+    ]).then(([population, forecast, infrastructure, currentConditions, disasterIntelligence]) => {
       if (controller.signal.aborted) return;
       setRegionResponses({
         population: population.status === 'fulfilled' ? population.value : null,
         forecast: forecast.status === 'fulfilled' ? forecast.value : null,
         infrastructure: infrastructure.status === 'fulfilled' ? infrastructure.value : null,
         currentConditions: currentConditions.status === 'fulfilled' ? currentConditions.value : null,
+        disasterIntelligence: disasterIntelligence.status === 'fulfilled' ? disasterIntelligence.value : null,
         currentConditionsError: currentConditions.status === 'rejected' ? currentConditions.reason.message : null,
+        disasterIntelligenceError: disasterIntelligence.status === 'rejected'
+          ? disasterIntelligence.reason instanceof Error
+            ? disasterIntelligence.reason.message
+            : 'Disaster intelligence could not be loaded.'
+          : null,
       });
-      const failedSources = [population, forecast, infrastructure, currentConditions].filter(result => result.status === 'rejected').length;
+      const failedSources = [population, forecast, infrastructure, currentConditions, disasterIntelligence].filter(result => result.status === 'rejected').length;
       setRegionError(failedSources ? `${failedSources} data source${failedSources > 1 ? 's' : ''} could not be loaded.` : null);
     }).finally(() => {
       if (!controller.signal.aborted) setRegionLoading(false);
@@ -391,6 +401,7 @@ export default function App() {
                         pois={buildMapPois(regionResponses, selectedRegion)}
                         cityLabel={selectedCity.name}
                         bounds={selectedRegion}
+                        riskZones={regionResponses?.disasterIntelligence?.risk_zones ?? []}
                         emptyMessage={Object.values(regionResponses?.infrastructure?.source_errors ?? {}).join(' ') || 'The provider returned no facility coordinates for this region.'}
                       />
 
@@ -435,6 +446,11 @@ export default function App() {
               {currentMode === 'threat' && (
                 <ThreatDetectionModeView
                   city={selectedCity}
+                  bounds={selectedRegion}
+                  pois={buildMapPois(regionResponses, selectedRegion)}
+                  disasterIntelligence={regionResponses?.disasterIntelligence ?? null}
+                  isLoading={regionLoading}
+                  error={regionResponses?.disasterIntelligenceError ?? null}
                   showMangroveLayer={showMangroveLayer}
                   onToggleMangrove={setShowMangroveLayer}
                   showHistoricalLayer={showHistoricalLayer}
@@ -446,6 +462,11 @@ export default function App() {
               {currentMode === 'tasks' && (
                 <TaskEvacuationModeView
                   city={selectedCity}
+                  bounds={selectedRegion}
+                  pois={buildMapPois(regionResponses, selectedRegion)}
+                  disasterIntelligence={regionResponses?.disasterIntelligence ?? null}
+                  isLoading={regionLoading}
+                  error={regionResponses?.disasterIntelligenceError ?? null}
                   showMangroveLayer={showMangroveLayer}
                   onToggleMangrove={setShowMangroveLayer}
                   showHistoricalLayer={showHistoricalLayer}
@@ -465,6 +486,8 @@ export default function App() {
               {currentMode === 'recovery' && (
                 <InsuranceRecoveryModeView
                   city={selectedCity}
+                  insuranceSummary={regionResponses?.disasterIntelligence?.insurance_summary ?? undefined}
+                  riskZones={regionResponses?.disasterIntelligence?.risk_zones ?? []}
                   isLightMode={true}
                 />
               )}

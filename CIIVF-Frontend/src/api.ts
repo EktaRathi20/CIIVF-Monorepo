@@ -77,6 +77,85 @@ export interface WhatsAppConfigurationResponse {
   delivery_configured: boolean;
 }
 
+export interface DisasterRiskZone {
+  id: string;
+  label: string;
+  color: 'red' | 'orange' | 'yellow' | 'green';
+  lat: number | null;
+  lon: number | null;
+  radius_km: number;
+  description?: string;
+  basis?: string[];
+}
+
+export interface DisasterInsuranceSummary {
+  status: 'UNAVAILABLE' | 'EVALUATED';
+  trigger_met: boolean | null;
+  trigger_threshold_m: number | null;
+  observed_water_depth_m: number | null;
+  estimated_payout_cr: number | null;
+  headline: string;
+  coverage_focus: string[];
+  note?: string;
+}
+
+export interface DisasterRecommendedTask {
+  department: string;
+  location: string;
+  description: string;
+  priority?: 'critical' | 'high' | 'moderate' | 'low' | string;
+  sub_team?: string;
+  status_text?: string;
+}
+
+export interface DisasterIntelligenceResponse {
+  status: string;
+  region: string;
+  generated_at: string;
+  data_quality: {
+    ingestion_status: 'SUCCESS' | 'FAILED' | string;
+    telemetry_status: 'AVAILABLE' | 'UNAVAILABLE' | 'NO_CURRENT_MEASUREMENTS' | string;
+    ingestion_error: string | null;
+    telemetry_timestamp: string | null;
+    sources: Record<string, string | null>;
+  };
+  current_conditions: {
+    wind_speed_kmh: number | null;
+    pressure_hpa: number | null;
+    storm_surge_meters: number | null;
+    alert_status: string;
+  };
+  risk_assessment: {
+    level: string;
+    score: number;
+    factors: string[];
+    method: string;
+    official_warning: boolean;
+    note: string;
+  };
+  risk_zones: DisasterRiskZone[];
+  historical_context: {
+    primary_analog: string | null;
+    historical_analogs: Array<Record<string, unknown>>;
+  };
+  demography: {
+    total_population?: number | null;
+    [key: string]: unknown;
+  };
+  critical_places: {
+    hospitals?: Array<{ name: string; address?: string | null; lat?: number | null; lon?: number | null }>;
+    shelters?: Array<{ name: string; address?: string | null; lat?: number | null; lon?: number | null }>;
+    source_errors?: Record<string, string>;
+    [key: string]: unknown;
+  };
+  insurance_summary: DisasterInsuranceSummary;
+  ai_analysis: {
+    summary: string | null;
+    recommended_tasks: DisasterRecommendedTask[];
+    reasoning_context: string[];
+  };
+}
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
 async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -127,6 +206,8 @@ export const api = {
     request<HistoricalResponse>(`/history?region=${encodeURIComponent(region)}`, signal),
   getWhatsAppConfiguration: (signal?: AbortSignal) =>
     request<WhatsAppConfigurationResponse>('/whatsapp/configuration', signal),
+  getDisasterIntelligence: (region: string, signal?: AbortSignal) =>
+    request<DisasterIntelligenceResponse>(`/disaster-intelligence/${encodeURIComponent(region)}`, signal),
   startWhatsAppVerification: (phone: string) =>
     postRequest<{ status: string }>('/whatsapp/verification/start', { phone }),
   checkWhatsAppVerification: (phone: string, code: string, action: 'subscribe' | 'unsubscribe') =>

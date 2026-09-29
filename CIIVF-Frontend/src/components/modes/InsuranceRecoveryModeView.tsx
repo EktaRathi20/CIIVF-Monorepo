@@ -4,29 +4,34 @@ import {
   Layers, Waves, FileText, ExternalLink, Sparkles, Building, TreeDeciduous
 } from 'lucide-react';
 import { SDG_ALIGNMENTS } from '../../data/mockData';
+import { DisasterInsuranceSummary, DisasterRiskZone } from '../../api';
 import { CityLocation } from '../../types';
 
 interface InsuranceRecoveryModeViewProps {
   city: CityLocation;
+  insuranceSummary?: DisasterInsuranceSummary;
+  riskZones?: DisasterRiskZone[];
   isLightMode?: boolean;
 }
 
 export const InsuranceRecoveryModeView: React.FC<InsuranceRecoveryModeViewProps> = ({
   city,
+  insuranceSummary,
+  riskZones = [],
   isLightMode = true,
 }) => {
   // Slider position from 0 (all Before) to 100 (all After)
   const [sliderPosition, setSliderPosition] = useState<number>(50);
+  const insuranceEvaluated = insuranceSummary?.status === 'EVALUATED';
+  const triggerReached = insuranceSummary?.trigger_met === true;
 
   return (
     <div className="space-y-4">
       {/* 1. Header & Parametric Condition Met Financial Summary Card */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Main Parametric Financial Card matching prompt */}
-        <div className={`lg:col-span-2 border-2 rounded-2xl p-5 shadow-lg relative overflow-hidden transition-colors ${
-          isLightMode
-            ? 'bg-gradient-to-br from-emerald-50/90 via-white to-emerald-50/50 border-emerald-500'
-            : 'bg-gradient-to-br from-slate-900 via-emerald-950/40 to-slate-900 border-emerald-500/70'
+        <div className={`lg:col-span-2 border rounded-xl p-5 shadow-sm relative overflow-hidden transition-colors ${
+          isLightMode ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
         }`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
@@ -36,74 +41,54 @@ export const InsuranceRecoveryModeView: React.FC<InsuranceRecoveryModeViewProps>
                 }`}>
                   PARAMETRIC DISASTER INSURANCE PROTOCOL
                 </span>
-                {/* Green "Funds Unlocked" Badge */}
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white uppercase flex items-center gap-1 shadow-xs">
-                  <CheckCircle2 size={12} />
-                  Funds Unlocked
+                <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase flex items-center gap-1 border ${
+                  insuranceEvaluated
+                    ? triggerReached ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}>
+                  {insuranceEvaluated ? triggerReached ? 'Threshold reached' : 'Below threshold' : 'Not evaluated'}
                 </span>
               </div>
               <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${
                 isLightMode ? 'text-slate-900' : 'text-white'
               }`}>
-                Parametric Condition Met: Flood &gt; 1.2m
+                {insuranceEvaluated
+                  ? triggerReached ? 'Configured trigger threshold reached' : 'Configured trigger threshold not reached'
+                  : 'Insurance trigger cannot be evaluated'}
               </h1>
               <p className={`text-xs mt-1 ${isLightMode ? 'text-slate-600' : 'text-slate-300'}`}>
-                Verified via Copernicus Sentinel-1 Synthetic Aperture Radar (SAR) & GloFAS Hooghly basin river gauge telemetry.
+                {insuranceSummary?.headline ?? 'Waiting for an insurance assessment from disaster intelligence.'}
               </p>
             </div>
 
             {/* Payout Figure */}
             <div className={`p-3 rounded-xl border text-right shrink-0 ${
-              isLightMode
-                ? 'bg-white border-emerald-300 shadow-sm'
-                : 'bg-slate-950/80 border-emerald-600/40'
+                isLightMode
+                ? 'bg-slate-50 border-slate-200'
+                : 'bg-slate-950 border-slate-800'
             }`}>
               <span className={`text-[10px] uppercase font-mono ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                 Disbursed Liquidity
               </span>
               <div className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${
-                isLightMode ? 'text-emerald-700' : 'text-emerald-400'
+                  isLightMode ? 'text-slate-900' : 'text-white'
               }`}>
-                ₹14.50 Cr
+                {insuranceSummary?.estimated_payout_cr == null ? 'Not configured' : `₹${insuranceSummary.estimated_payout_cr.toFixed(2)} Cr`}
               </div>
               <span className={`text-[11px] font-mono ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
-                ($1,750,000 USD Equivalent)
+                {insuranceSummary?.observed_water_depth_m == null ? 'Observed depth unavailable' : `${insuranceSummary.observed_water_depth_m.toFixed(2)} m observed`}
               </span>
             </div>
           </div>
 
-          {/* Allocation Breakdown */}
-          <div className={`pt-3 border-t grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs ${
-            isLightMode ? 'border-emerald-200' : 'border-slate-800'
-          }`}>
-            <div className={`p-2.5 rounded-lg border ${
-              isLightMode ? 'bg-white border-slate-200' : 'bg-slate-950/60 border-slate-800/80'
-            }`}>
-              <span className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Emergency Shelters</span>
-              <div className={`font-bold font-mono mt-0.5 ${isLightMode ? 'text-slate-900' : 'text-white'}`}>₹4.80 Cr (33%)</div>
-              <div className={`text-[10px] ${isLightMode ? 'text-emerald-700 font-medium' : 'text-emerald-400'}`}>Rations, medical & clean water</div>
+          <div className={`pt-3 border-t ${isLightMode ? 'border-slate-200' : 'border-slate-800'}`}>
+            <div className={`text-[10px] font-bold uppercase ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Coverage focus returned by API</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {insuranceSummary?.coverage_focus?.length
+                ? insuranceSummary.coverage_focus.map(item => <span key={item} className={`rounded-md border px-2 py-1 text-[11px] ${isLightMode ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-slate-700 bg-slate-950 text-slate-300'}`}>{item}</span>)
+                : <span className="text-xs text-slate-500">No coverage areas returned.</span>}
             </div>
-            <div className={`p-2.5 rounded-lg border ${
-              isLightMode ? 'bg-white border-slate-200' : 'bg-slate-950/60 border-slate-800/80'
-            }`}>
-              <span className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>De-Watering Operations</span>
-              <div className={`font-bold font-mono mt-0.5 ${isLightMode ? 'text-slate-900' : 'text-white'}`}>₹3.20 Cr (22%)</div>
-              <div className={`text-[10px] ${isLightMode ? 'text-emerald-700 font-medium' : 'text-emerald-400'}`}>High-capacity pumps deployed</div>
-            </div>
-            <div className={`p-2.5 rounded-lg border ${
-              isLightMode ? 'bg-white border-slate-200' : 'bg-slate-950/60 border-slate-800/80'
-            }`}>
-              <span className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Smallholder Farmer Support</span>
-              <div className={`font-bold font-mono mt-0.5 ${isLightMode ? 'text-slate-900' : 'text-white'}`}>₹3.50 Cr (24%)</div>
-              <div className={`text-[10px] ${isLightMode ? 'text-emerald-700 font-medium' : 'text-emerald-400'}`}>Direct cash transfers initiated</div>
-            </div>
-            <div className={`p-2.5 rounded-lg border ${
-              isLightMode ? 'bg-white border-slate-200' : 'bg-slate-950/60 border-slate-800/80'
-            }`}>
-              <span className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>Embankment Repairs</span>
-              <div className={`font-bold font-mono mt-0.5 ${isLightMode ? 'text-slate-900' : 'text-white'}`}>₹3.00 Cr (21%)</div>
-              <div className={`text-[10px] ${isLightMode ? 'text-emerald-700 font-medium' : 'text-emerald-400'}`}>Geotextile & sandbag sealing</div>
-            </div>
+            {insuranceSummary?.note && <p className={`mt-2 text-xs ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>{insuranceSummary.note}</p>}
           </div>
         </div>
 
@@ -116,38 +101,36 @@ export const InsuranceRecoveryModeView: React.FC<InsuranceRecoveryModeViewProps>
               isLightMode ? 'text-slate-900' : 'text-white'
             }`}>
               <ShieldCheck size={16} className={isLightMode ? 'text-emerald-600' : 'text-emerald-400'} />
-              <span>Smart Contract Verification Proof</span>
+              <span>Trigger assessment details</span>
             </h3>
             <p className={`text-xs leading-relaxed mb-3 ${
               isLightMode ? 'text-slate-600' : 'text-slate-300'
             }`}>
-              Parametric liquidity contracts release without claims adjusters or paperwork delays upon satellite radar flood threshold verification.
+              Values below come from the selected region's disaster-intelligence response. A trigger result is not proof of a policy payout.
             </p>
 
             <div className={`space-y-1.5 text-xs ${isLightMode ? 'text-slate-700' : 'text-slate-300'}`}>
               <div className={`flex justify-between py-1 border-b ${isLightMode ? 'border-slate-100' : 'border-slate-800'}`}>
                 <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Trigger Threshold:</span>
-                <span className={`font-mono font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>&gt; 1.20 m</span>
+                <span className={`font-mono font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{insuranceSummary?.trigger_threshold_m == null ? 'Unavailable' : `≥ ${insuranceSummary.trigger_threshold_m} m`}</span>
               </div>
               <div className={`flex justify-between py-1 border-b ${isLightMode ? 'border-slate-100' : 'border-slate-800'}`}>
                 <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Observed Water Depth:</span>
-                <span className={`font-mono font-bold ${isLightMode ? 'text-rose-700' : 'text-rose-400'}`}>1.42 m (+0.22m)</span>
+                <span className={`font-mono font-bold ${isLightMode ? 'text-rose-700' : 'text-rose-400'}`}>{insuranceSummary?.observed_water_depth_m == null ? 'Unavailable' : `${insuranceSummary.observed_water_depth_m.toFixed(2)} m`}</span>
               </div>
               <div className={`flex justify-between py-1 border-b ${isLightMode ? 'border-slate-100' : 'border-slate-800'}`}>
-                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Oracle Providers:</span>
-                <span className={`font-mono font-semibold ${isLightMode ? 'text-blue-700' : 'text-cyan-300'}`}>Copernicus SAR & GloFAS</span>
+                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Trigger result:</span>
+                <span className={`font-mono font-semibold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{insuranceEvaluated ? triggerReached ? 'Reached' : 'Not reached' : 'Not evaluated'}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Disbursement Time:</span>
-                <span className={`font-mono font-bold ${isLightMode ? 'text-emerald-700' : 'text-emerald-400'}`}>Instant (4.2 minutes)</span>
+                <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Payout amount:</span>
+                <span className={`font-mono font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{insuranceSummary?.estimated_payout_cr == null ? 'Not configured' : `₹${insuranceSummary.estimated_payout_cr.toFixed(2)} Cr`}</span>
               </div>
             </div>
           </div>
 
-          <div className={`mt-3 p-2 rounded-lg border font-mono text-[10px] truncate ${
-            isLightMode ? 'bg-slate-50 border-slate-200 text-slate-600' : 'bg-slate-950 border-slate-800 text-slate-400'
-          }`}>
-            TxHash: 0x8f9c2d1b...4a7e9140 (Verified on Municipal Ledger)
+          <div className={`mt-3 rounded-lg border p-2 text-[10px] ${isLightMode ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-slate-800 bg-slate-950 text-slate-400'}`}>
+            {insuranceSummary?.note ?? 'No policy, payout, or transaction ledger is connected to this response.'}
           </div>
         </div>
       </div>

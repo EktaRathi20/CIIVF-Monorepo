@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-09-26T04:44:04.960122Z",
+  "region_target": "vizag",
+  "system_name": "Normal Weather Conditions",
+  "alert_status": "NORMAL_MONITORING",
+  "metrics": {
+    "peak_wind_kmh": 0.0,
+    "central_pressure_hpa": 1010,
+    "storm_surge_meters": 0.5
+  },
+  "trajectory": {
+    "moving_direction": "W-NW",
+    "speed_kmh": 0,
+    "landfall_eta_hours": 0
+  }
+}

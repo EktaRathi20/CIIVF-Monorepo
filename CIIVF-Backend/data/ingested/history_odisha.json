@@ -1,0 +1,97 @@
+{
+  "timestamp": "2026-09-26T12:26:47.986856Z",
+  "region_target": "odisha",
+  "total_historical_events_analyzed": 10,
+  "historical_analogs": [
+    {
+      "matched_cyclone": "ODISHA CYCLONE (1999)",
+      "historical_peak_wind_kmh": 4,
+      "historical_surge_meters": 7.0,
+      "reference_period": {
+        "start_date": "1999-10-25",
+        "end_date": "1999-11-04"
+      }
+    },
+    {
+      "matched_cyclone": "PHALIN (2013)",
+      "historical_peak_wind_kmh": 3,
+      "historical_surge_meters": 3.5,
+      "reference_period": {
+        "start_date": "2013-10-08",
+        "end_date": "2013-10-14"
+      }
+    },
+    {
+      "matched_cyclone": "HUDHUD (2014)",
+      "historical_peak_wind_kmh": 5,
+      "historical_surge_meters": 1.4,
+      "reference_period": {
+        "start_date": "2014-10-07",
+        "end_date": "2014-10-14"
+      }
+    },
+    {
+      "matched_cyclone": "TITLI (2018)",
+      "historical_peak_wind_kmh": 8,
+      "historical_surge_meters": 1.5,
+      "reference_period": {
+        "start_date": "2018-10-08",
+        "end_date": "2018-10-13"
+      }
+    },
+    {
+      "matched_cyclone": "FANI (2019)",
+      "historical_peak_wind_kmh": 17,
+      "historical_surge_meters": 1.5,
+      "reference_period": {
+        "start_date": "2019-04-26",
+        "end_date": "2019-05-05"
+      }
+    },
+    {
+      "matched_cyclone": "BULBUL (2019)",
+      "historical_peak_wind_kmh": 5,
+      "historical_surge_meters": 1.0,
+      "reference_period": {
+        "start_date": "2019-11-05",
+        "end_date": "2019-11-11"
+      }
+    },
+    {
+      "matched_cyclone": "AMPHAN (2020)",
+      "historical_peak_wind_kmh": 12,
+      "historical_surge_meters": 5.0,
+      "reference_period": {
+        "start_date": "2020-05-16",
+        "end_date": "2020-05-21"
+      }
+    },
+    {
+      "matched_cyclone": "YASi (YAAS) (2021)",
+      "historical_peak_wind_kmh": 165,
+      "historical_surge_meters": 2.5,
+      "reference_period": {
+        "start_date": "2021-05-23",
+        "end_date": "2021-05-28"
+      }
+    },
+    {
+      "matched_cyclone": "GULAB (2021)",
+      "historical_peak_wind_kmh": 165,
+      "historical_surge_meters": 0.5,
+      "reference_period": {
+        "start_date": "2021-09-24",
+        "end_date": "2021-09-28"
+      }
+    },
+    {
+      "matched_cyclone": "DANA (2024)",
+      "historical_peak_wind_kmh": 165,
+      "historical_surge_meters": 2.0,
+      "reference_period": {
+        "start_date": "2024-10-22",
+        "end_date": "2024-10-25"
+      }
+    }
+  ]
+}

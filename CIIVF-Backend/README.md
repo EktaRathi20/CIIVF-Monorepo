@@ -26,6 +26,14 @@ python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
+MAC -
+```
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
 If PowerShell blocks activation, allow it for the current terminal only:
 
 ```powershell

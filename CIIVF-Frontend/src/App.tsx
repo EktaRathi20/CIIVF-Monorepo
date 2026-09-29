@@ -409,14 +409,15 @@ export default function App() {
                         }}
                         isLightMode={true}
                       />
-                    </div>
-                  </div>
-
-                  {/* Bottom Row: Population Exposure, Shelters, and Evacuation Routes */}
+                      {/* Bottom Row: Population Exposure, Shelters, and Evacuation Routes */}
                   <BottomRowCards
                     infrastructure={regionResponses?.infrastructure ?? null}
                     isLightMode={true}
                   />
+                    </div>
+                  </div>
+
+                  
                 </div>
               )}
 

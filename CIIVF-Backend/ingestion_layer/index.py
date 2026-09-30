@@ -1,5 +1,7 @@
 import json
+from datetime import timedelta
 from pathlib import Path
+from ingestion_layer.cache import INGESTED_DIR, load_json_cache, save_json_cache
 from ingestion_layer.gee import init_gee, fetch_sar_imagery, REGION_DATA
 from ingestion_layer.weather import fetch_meteorological_telemetry
 from ingestion_layer.weather import fetch_7_day_forecast
@@ -7,8 +9,32 @@ from ingestion_layer.population import fetch_population
 from ingestion_layer.disaster_history import fetch_historical_disasters
 from ingestion_layer.places import fetch_critical_infrastructure
 
+RUN_INGESTION_CACHE_TTL = timedelta(hours=6)
+
+
+def _load_recent_ingestion(region):
+    region_metadata = REGION_DATA.get(region)
+    if region_metadata is None:
+        return None
+
+    image_path = INGESTED_DIR / f"scan_{region}.png"
+    return load_json_cache(
+        f"unified_payload_{region}.json",
+        RUN_INGESTION_CACHE_TTL,
+        use_file_mtime=True,
+        validator=lambda payload: (
+            isinstance(payload, dict)
+            and payload.get("region_metadata") == region_metadata
+            and image_path.is_file()
+        ),
+    )
+
 
 def run_ingestion(region="vizag"):
+    cached_payload = _load_recent_ingestion(region)
+    if cached_payload is not None:
+        return cached_payload
+
     # GEE
     init_gee()    
     image_bytes, region_meta = fetch_sar_imagery(region)
@@ -29,7 +55,7 @@ def run_ingestion(region="vizag"):
     disaster_history_data = fetch_historical_disasters(region)
 
     # Output Directory
-    output_dir = Path("data/ingested")
+    output_dir = INGESTED_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Save Image
@@ -52,7 +78,7 @@ def run_ingestion(region="vizag"):
 
     compiled_payload = {
         "region_metadata": region_meta,
-        "satellite_frame_path": str(image_filepath),
+        "satellite_frame_path": str(Path("data/ingested") / image_filepath.name),
         "meteorological_telemetry": weather_data,
         "forcast":forcast,
         "demography": population,
@@ -61,8 +87,7 @@ def run_ingestion(region="vizag"):
     }
 
     compiled_filepath = output_dir / f"unified_payload_{region}.json"
-    with open(compiled_filepath, "w") as f:
-        json.dump(compiled_payload, f, indent=2)
+    save_json_cache(compiled_filepath.name, compiled_payload)
 
     return compiled_payload
 

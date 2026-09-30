@@ -1,11 +1,43 @@
 import os
 import requests
-import json
 import math
+from datetime import timedelta
 from dotenv import load_dotenv
+from ingestion_layer.cache import load_json_cache, save_json_cache
 from ingestion_layer.constant import get_region_coords, REGION_DATA
 
 load_dotenv()
+
+PLACES_CACHE_TTL = timedelta(hours=24)
+
+
+def _load_recent_places(region_key, radius_meters):
+    if region_key not in REGION_DATA:
+        return None
+
+    return load_json_cache(
+        f"places_{region_key}.json",
+        PLACES_CACHE_TTL,
+        payload_key="facilities",
+        region_key=region_key,
+        expected_metadata={"radius_meters": radius_meters},
+        validator=lambda facilities: (
+            isinstance(facilities, dict) and not facilities.get("source_errors")
+        ),
+    )
+
+
+def _save_places(region_key, radius_meters, facilities):
+    if facilities.get("source_errors"):
+        return
+
+    save_json_cache(
+        f"places_{region_key}.json",
+        facilities,
+        payload_key="facilities",
+        metadata={"region_target": region_key, "radius_meters": radius_meters},
+    )
+
 
 def _distance_meters(lat_a, lon_a, lat_b, lon_b):
     earth_radius_meters = 6371000
@@ -21,6 +53,10 @@ def _distance_meters(lat_a, lon_a, lat_b, lon_b):
 
 
 def fetch_critical_infrastructure(region_key="vizag", radius_meters=5000):
+    cached_facilities = _load_recent_places(region_key, radius_meters)
+    if cached_facilities is not None:
+        return cached_facilities
+
     google_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     coords = get_region_coords(region_key)
     if not google_api_key:
@@ -97,4 +133,5 @@ def fetch_critical_infrastructure(region_key="vizag", radius_meters=5000):
     }
     add_results("shelters", "https://places.googleapis.com/v1/places:searchText", shelter_payload)
 
+    _save_places(region_key, radius_meters, facilities)
     return facilities

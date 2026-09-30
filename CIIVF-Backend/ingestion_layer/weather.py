@@ -1,10 +1,15 @@
 import os
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+from ingestion_layer.cache import load_json_cache, save_json_cache
 from ingestion_layer.constant import get_region_coords
 
 load_dotenv()
+
+TELEMETRY_CACHE_TTL = timedelta(minutes=10)
+FORECAST_CACHE_TTL = timedelta(hours=6)
+
 
 def _description_text(description):
     if isinstance(description, dict):
@@ -130,26 +135,39 @@ def _fallback_forecast(region_key, coords, primary_error):
 
 
 def fetch_meteorological_telemetry(region_key="vizag"):
+    cache_filename = f"telemetry_{region_key}.json"
+    cached_data = load_json_cache(
+        cache_filename, TELEMETRY_CACHE_TTL, region_key=region_key
+    )
+    if cached_data is not None:
+        return cached_data
+
     google_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     coords = get_region_coords(region_key)
     if not google_api_key:
-        return _fallback_current_conditions(
+        weather_data = _fallback_current_conditions(
             region_key,
             coords,
             "GOOGLE_MAPS_API_KEY is not configured",
         )
+        save_json_cache(cache_filename, weather_data)
+        return weather_data
 
     url = f"https://weather.googleapis.com/v1/currentConditions:lookup?key={google_api_key}&location.latitude={coords['lat']}&location.longitude={coords['lon']}"
     try:
         response = requests.get(url, timeout=15)
     except requests.RequestException as error:
-        return _fallback_current_conditions(
+        weather_data = _fallback_current_conditions(
             region_key,
             coords,
             f"Google Weather API request failed: {error}",
         )
+        save_json_cache(cache_filename, weather_data)
+        return weather_data
     if response.status_code != 200:
-        return _fallback_current_conditions(region_key, coords, _provider_error(response))
+        weather_data = _fallback_current_conditions(region_key, coords, _provider_error(response))
+        save_json_cache(cache_filename, weather_data)
+        return weather_data
 
     weather_data = response.json()
     temperature = weather_data.get("temperature", {})
@@ -160,7 +178,7 @@ def fetch_meteorological_telemetry(region_key="vizag"):
     if wind_speed is not None and wind_unit == "METERS_PER_SECOND":
         wind_speed *= 3.6
 
-    return {
+    weather_data = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "region_target": region_key,
         "temperature_c": temperature.get("degrees"),
@@ -173,21 +191,54 @@ def fetch_meteorological_telemetry(region_key="vizag"):
         "source": "Google Weather API",
         "source_fallback": False,
     }
+    save_json_cache(cache_filename, weather_data)
+    return weather_data
 
 
-def fetch_7_day_forecast(region_key="vizag"):    
+def fetch_7_day_forecast(region_key="vizag"):
+    cache_filename = f"forecast_{region_key}.json"
+    cached_data = load_json_cache(
+        cache_filename,
+        FORECAST_CACHE_TTL,
+        payload_key="data",
+        region_key=region_key,
+    )
+    if cached_data is not None:
+        return cached_data
+
     google_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
     coords = get_region_coords(region_key)
     if not google_api_key:
-        return _fallback_forecast(region_key, coords, "GOOGLE_MAPS_API_KEY is not configured")
+        forecast_data = _fallback_forecast(region_key, coords, "GOOGLE_MAPS_API_KEY is not configured")
+        save_json_cache(
+            cache_filename,
+            forecast_data,
+            payload_key="data",
+            metadata={"region_target": region_key},
+        )
+        return forecast_data
 
     url = f"https://weather.googleapis.com/v1/forecast/days:lookup?key={google_api_key}&location.latitude={coords['lat']}&location.longitude={coords['lon']}&days=7"
     try:
         response = requests.get(url, timeout=20)
     except requests.RequestException as error:
-        return _fallback_forecast(region_key, coords, f"Google Weather API request failed: {error}")
+        forecast_data = _fallback_forecast(region_key, coords, f"Google Weather API request failed: {error}")
+        save_json_cache(
+            cache_filename,
+            forecast_data,
+            payload_key="data",
+            metadata={"region_target": region_key},
+        )
+        return forecast_data
     if response.status_code != 200:
-        return _fallback_forecast(region_key, coords, _provider_error(response))
+        forecast_data = _fallback_forecast(region_key, coords, _provider_error(response))
+        save_json_cache(
+            cache_filename,
+            forecast_data,
+            payload_key="data",
+            metadata={"region_target": region_key},
+        )
+        return forecast_data
 
     weather_data = response.json()
     forecast_days = weather_data.get("forecastDays", [])
@@ -206,7 +257,7 @@ def fetch_7_day_forecast(region_key="vizag"):
             "condition": condition_desc
         })
 
-    return {
+    forecast_data = {
         "region_target": region_key,
         "latitude": coords["lat"],
         "longitude": coords["lon"],
@@ -214,3 +265,10 @@ def fetch_7_day_forecast(region_key="vizag"):
         "source": "Google Weather API",
         "source_fallback": False,
     }
+    save_json_cache(
+        cache_filename,
+        forecast_data,
+        payload_key="data",
+        metadata={"region_target": region_key},
+    )
+    return forecast_data

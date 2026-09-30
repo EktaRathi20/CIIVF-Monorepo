@@ -4,6 +4,8 @@ from fastapi import HTTPException
 from google.genai import types
 from ingestion_layer.constant import REGION_DATA
 from ingestion_layer.index import run_ingestion
+from google.cloud import aiplatform #new
+import os
 
 async def build_disaster_intelligence(region: str, client):
     """
@@ -371,6 +373,64 @@ async def build_disaster_intelligence(region: str, client):
     risk_score = min(risk_score, 100)
 
     # ---------------------------------------------------------
+    # 7.5 VERTEX AI AUTOML PREDICTION (NEW LAYER)
+    # ---------------------------------------------------------
+    ml_prediction_result = None
+    if telemetry_data_status == "AVAILABLE":
+        try:
+            # Use the endpoint details from your screenshot
+            PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT") # Ensure this is set in your .env
+            ENDPOINT_ID = "3407664161163837440" 
+            LOCATION = "us-central1"
+
+            if PROJECT_ID:
+                aiplatform.init(project=PROJECT_ID, location=LOCATION)
+                endpoint = aiplatform.Endpoint(endpoint_name=f"projects/{PROJECT_ID}/locations/{LOCATION}/endpoints/{ENDPOINT_ID}")
+
+                # IMPORTANT: Update these keys to match the exact column names used in your AutoML training dataset!
+                # Format time exactly as the model expects
+                formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                # You must pass all 23 feature columns (assuming 'cyclone_status' is the target)
+                instance = {
+                    "basin": "BoB", 
+                    "cloud_cover_percent": "0.0",
+                    "country_region": "India",
+                    "distance_to_coast_km": "0.0",
+                    "elevation_m": "0.0",
+                    "humidity_percent": "0.0",
+                    "latitude": str(center_lat) if center_lat else "0.0",
+                    "longitude": str(center_lon) if center_lon else "0.0",
+                    "pressure_change_12h_hpa": "0.0",
+                    "pressure_change_3h_hpa": "0.0",
+                    "pressure_change_6h_hpa": "0.0",
+                    "pressure_hpa": str(pressure) if pressure else "1013.0",
+                    "rainfall_1h_mm": "0.0",
+                    "rainfall_24h_mm": "0.0",
+                    "rainfall_6h_mm": "0.0",
+                    "sea_level_anomaly_m": str(storm_surge) if storm_surge else "0.0",
+                    "sea_surface_temperature_c": "28.0",
+                    "temperature_c": "28.0",
+                    "timestamp": formatted_time,
+                    "water_fraction": "0.0",
+                    "wind_direction_deg": "0.0",
+                    "wind_gust_kmh": str(wind * 1.2) if wind else "0.0", # Rough estimate if gust is missing
+                    "wind_speed_kmh": str(wind) if wind else "0.0"
+                }
+
+                prediction = endpoint.predict(instances=[instance])
+                
+                if prediction.predictions:
+                    ml_prediction_result = prediction.predictions[0]
+                    # Pass the ML result into the context for Gemini to see
+                    risk_factors.append(f"AutoML Classification Result: {ml_prediction_result}")
+            else:
+                print("[VERTEX AI] GOOGLE_CLOUD_PROJECT not set in environment.")
+
+        except Exception as e:
+            print(f"[VERTEX AI] Prediction failed or still deploying: {e}")
+
+    # ---------------------------------------------------------
     # 8. RISK LEVEL
     # ---------------------------------------------------------
 
@@ -597,7 +657,7 @@ async def build_disaster_intelligence(region: str, client):
             "status": telemetry_data_status,
             "source_system": system_name,
         },
-
+        "ml_classification_model": ml_prediction_result, # <-- Passed to Gemini
         "risk_assessment": {
             "level": risk_level,
             "score": risk_score,
@@ -757,7 +817,7 @@ do not pretend current hazard conditions are known.
         "status": "success",
 
         "region": region_key,
-
+        "ml_prediction": ml_prediction_result,
         "generated_at": datetime.now(
             timezone.utc
         ).isoformat(),

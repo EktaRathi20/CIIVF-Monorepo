@@ -1,9 +1,11 @@
 import codecs
 import csv
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import json
 import math
 import threading
 import time
+from pathlib import Path
 
 import requests
 
@@ -11,6 +13,8 @@ from ingestion_layer.constant import HISTORY_SEARCH_RADIUS_KM, REGION_COORDS, ge
 
 IBTRACS_CSV_URL = "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.NI.list.v04r01.csv"
 CACHE_TTL_SECONDS = 6 * 60 * 60
+INGESTED_DIR = Path(__file__).resolve().parent.parent / "data" / "ingested"
+CACHE_FILE = INGESTED_DIR / "historical_tracks_cache.json"
 _cache_lock = threading.Lock()
 _cache_loaded_at = 0.0
 _cache_events_by_region = None
@@ -118,7 +122,38 @@ def _get_cached_tracks():
 
     with _cache_lock:
         if _cache_events_by_region is None or time.monotonic() - _cache_loaded_at >= CACHE_TTL_SECONDS:
-            _cache_events_by_region = _download_tracks_by_region()
+            cached_tracks = None
+            try:
+                with CACHE_FILE.open(encoding="utf-8") as cache_file:
+                    cache_data = json.load(cache_file)
+                timestamp_value = cache_data.get("timestamp")
+                events_by_region = cache_data.get("events_by_region")
+                if isinstance(timestamp_value, str) and isinstance(events_by_region, dict):
+                    timestamp = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
+                    if timestamp.tzinfo is None:
+                        timestamp = timestamp.replace(tzinfo=timezone.utc)
+                    age = datetime.now(timezone.utc) - timestamp
+                    if (
+                        timedelta(0) <= age <= timedelta(seconds=CACHE_TTL_SECONDS)
+                        and all(isinstance(events_by_region.get(region_key), list) for region_key in REGION_COORDS)
+                    ):
+                        cached_tracks = events_by_region
+            except (OSError, ValueError, TypeError, AttributeError):
+                pass
+
+            if cached_tracks is not None:
+                _cache_events_by_region = cached_tracks
+            else:
+                _cache_events_by_region = _download_tracks_by_region()
+                try:
+                    INGESTED_DIR.mkdir(parents=True, exist_ok=True)
+                    with CACHE_FILE.open("w", encoding="utf-8") as cache_file:
+                        json.dump({
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "events_by_region": _cache_events_by_region,
+                        }, cache_file, indent=2)
+                except OSError as error:
+                    print(f"[DISASTER HISTORY] Unable to save cache: {error}")
             _cache_loaded_at = time.monotonic()
     return _cache_events_by_region
 

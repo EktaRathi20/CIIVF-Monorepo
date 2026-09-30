@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  CloudRain, MapPin, ChevronRight
+  BellRing, CloudRain, LoaderCircle, MapPin, X
 } from 'lucide-react';
 import { MapPOI, OperationalMode, CityLocation } from './types';
 import { api, ApiRegion, CurrentConditionsResponse, DisasterIntelligenceResponse, ForecastResponse, HistoricalResponse, InfrastructureResponse, PopulationResponse } from './api';
+import { ClimateAlert } from './climateAlerts';
 
 // Layout & Authentication Components
 import { Header } from './components/Header';
@@ -27,9 +28,11 @@ import { ThreatDetectionModeView } from './components/modes/ThreatDetectionModeV
 import { TaskEvacuationModeView } from './components/modes/TaskEvacuationModeView';
 import { LandfallRescueModeView } from './components/modes/LandfallRescueModeView';
 import { InsuranceRecoveryModeView } from './components/modes/InsuranceRecoveryModeView';
+import { SimulatorModeView } from './components/modes/SimulatorModeView';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { EvacuationModal } from './components/modals/EvacuationModal';
 import { useClimateAlerts } from './useClimateAlerts';
+import { createSimulatedIntelligence, SimulationTier } from './simulator';
 
 interface RegionResponses {
   population: PopulationResponse | null;
@@ -57,6 +60,15 @@ const buildCity = (
     ? Math.round(forecast.reduce((sum, day) => sum + day.min_temp_c, 0) / forecast.length)
     : null;
   const population = responses?.population?.total_population;
+  const assessment = responses?.disasterIntelligence?.risk_assessment;
+  const level = assessment?.level?.toUpperCase();
+  const cityRiskLevel: CityLocation['riskLevel'] = level === 'RED'
+    ? 'Red'
+    : level === 'ORANGE'
+      ? 'Orange'
+      : level === 'YELLOW'
+        ? 'Moderate'
+        : 'Normal';
   const facilityErrors = Object.values(responses?.infrastructure?.source_errors ?? {}).join(' ');
   const sources = [
     {
@@ -91,11 +103,21 @@ const buildCity = (
     currentWeather: responses?.currentConditions?.condition ?? 'Unavailable',
     tempRangeAvg: averageHigh === null || averageLow === null ? 'Unavailable' : `${averageHigh}° / ${averageLow}°C`,
     forecastSummary: forecast[0]?.condition ?? 'Forecast unavailable',
-    riskScore: 0,
-    riskLevel: 'Normal',
-    officialWarning: { agency: 'Not connected', level: 'Unavailable', title: 'Warning data is not exposed by the backend API.', validity: '', details: '' },
-    operationalRisk: { score: 0, level: 'Unavailable', factors: [] },
-    aiPreparednessBrief: { summary: 'AI preparedness plans are not exposed by the backend API.', detailedPlan: [], rationale: [] },
+    riskScore: assessment?.score ?? 0,
+    riskLevel: cityRiskLevel,
+    officialWarning: {
+      agency: assessment?.official_warning ? 'Backend warning' : 'Risk screening',
+      level: assessment?.level ?? 'Unavailable',
+      title: assessment?.note ?? 'No warning or risk assessment returned by the API.',
+      validity: '',
+      details: assessment?.factors.join(' · ') ?? '',
+    },
+    operationalRisk: { score: assessment?.score ?? 0, level: assessment?.level ?? 'Unavailable', factors: assessment?.factors ?? [] },
+    aiPreparednessBrief: {
+      summary: responses?.disasterIntelligence?.ai_analysis.summary ?? 'AI preparedness analysis is unavailable.',
+      detailedPlan: responses?.disasterIntelligence?.ai_analysis.recommended_tasks.map(task => task.description) ?? [],
+      rationale: responses?.disasterIntelligence?.ai_analysis.reasoning_context ?? [],
+    },
     evidenceQuality: {
       rating: sources.every(source => source.available) ? 'CONNECTED' : 'PARTIAL',
       items: sources,
@@ -105,7 +127,12 @@ const buildCity = (
 };
 
 const buildMapPois = (responses: RegionResponses | null, region: ApiRegion): MapPOI[] => {
-  const resources = responses?.disasterIntelligence?.critical_places ?? responses?.infrastructure;
+  const intelligenceResources = responses?.disasterIntelligence?.critical_places;
+  const hasIntelligenceFacilities = (intelligenceResources?.hospitals?.length ?? 0) > 0
+    || (intelligenceResources?.shelters?.length ?? 0) > 0;
+  const resources = hasIntelligenceFacilities || !responses?.infrastructure
+    ? intelligenceResources
+    : responses.infrastructure;
   if (!resources) return [];
   const project = (facility: { name: string; address?: string | null; lat?: number | null; lon?: number | null }, type: 'shelter' | 'hospital', index: number): MapPOI | null => {
     if (facility.lat == null || facility.lon == null) return null;
@@ -128,7 +155,7 @@ const buildMapPois = (responses: RegionResponses | null, region: ApiRegion): Map
 };
 
 export default function App() {
-  const { alerts, unreadCount, connectionState, error: alertsError, markAllRead } = useClimateAlerts();
+  const { alerts, simulationAlerts, latestLiveAlert, unreadCount, connectionState, error: alertsError, markAllRead } = useClimateAlerts();
 
   // Authentication State
   const [currentUser, setCurrentUser] = useState<OfficerUser>(OPERATIONAL_ROLES[0]);
@@ -138,18 +165,27 @@ export default function App() {
   const [regions, setRegions] = useState<Record<string, ApiRegion>>({});
   const [selectedRegionKey, setSelectedRegionKey] = useState('vizag');
   const [regionResponses, setRegionResponses] = useState<RegionResponses | null>(null);
+  const [currentMode, setCurrentMode] = useState<OperationalMode>('threat');
+  const [simulationTier, setSimulationTier] = useState<SimulationTier | null>(null);
+  const [simulatedIntelligence, setSimulatedIntelligence] = useState<DisasterIntelligenceResponse | null>(null);
   const [regionLoading, setRegionLoading] = useState(true);
   const [regionError, setRegionError] = useState<string | null>(null);
   const [historicalData, setHistoricalData] = useState<HistoricalResponse | null>(null);
   const [historicalLoading, setHistoricalLoading] = useState(false);
   const [historicalError, setHistoricalError] = useState<string | null>(null);
   const selectedRegion = regions[selectedRegionKey];
-  const selectedCity = selectedRegion ? buildCity(selectedRegionKey, selectedRegion, regionResponses) : null;
+  const activeIntelligence = currentMode === 'simulator'
+    ? simulatedIntelligence ?? regionResponses?.disasterIntelligence ?? null
+    : regionResponses?.disasterIntelligence ?? null;
+  const displayedResponses = regionResponses
+    ? { ...regionResponses, disasterIntelligence: activeIntelligence }
+    : null;
+  const selectedCity = selectedRegion ? buildCity(selectedRegionKey, selectedRegion, displayedResponses) : null;
   const availableCities = Object.entries(regions).map(([key, region]) => buildCity(key, region, null));
-  const [currentMode, setCurrentMode] = useState<OperationalMode>('threat');
   const [isHistoricalView, setIsHistoricalView] = useState<boolean>(false);
   const [isNotificationView, setIsNotificationView] = useState<boolean>(false);
   const [isEvacuationModalOpen, setIsEvacuationModalOpen] = useState(false);
+  const [toastAlert, setToastAlert] = useState<ClimateAlert | null>(null);
 
   // Global Layer States for Map
   const [showMangroveLayer, setShowMangroveLayer] = useState<boolean>(true);
@@ -157,6 +193,33 @@ export default function App() {
 
   // Modal States
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  const runSimulation = (tier: SimulationTier, regionKey = selectedRegionKey, region = selectedRegion) => {
+    if (!region) return;
+    setSimulatedIntelligence(createSimulatedIntelligence(
+      regionKey === selectedRegionKey ? regionResponses?.disasterIntelligence ?? null : null,
+      regionKey,
+      region,
+      tier,
+    ));
+    setSimulationTier(tier);
+  };
+
+  const resetSimulation = () => {
+    setSimulatedIntelligence(null);
+    setSimulationTier(null);
+  };
+
+  useEffect(() => {
+    if (!latestLiveAlert) return;
+    setToastAlert(latestLiveAlert);
+  }, [latestLiveAlert]);
+
+  useEffect(() => {
+    if (!toastAlert) return;
+    const timeout = window.setTimeout(() => setToastAlert(null), 7000);
+    return () => window.clearTimeout(timeout);
+  }, [toastAlert]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -226,7 +289,7 @@ export default function App() {
   }, [isHistoricalView, selectedRegionKey]);
 
   if (regionLoading && !selectedCity) {
-    return <div className="min-h-screen grid place-items-center text-sm text-slate-600">Connecting to the CIIVF API…</div>;
+    return <div className="min-h-screen grid place-items-center bg-slate-100 p-6 text-sm text-slate-700"><div role="status" className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-5 py-4 shadow-sm"><LoaderCircle size={18} className="animate-spin text-cyan-800" /><span>Connecting to the CIIVF API and loading regions…</span></div></div>;
   }
 
   if (!selectedCity || !selectedRegion) {
@@ -251,14 +314,20 @@ export default function App() {
       <Header
         selectedCity={selectedCity}
         availableCities={availableCities}
-        onSelectCity={(city) => setSelectedRegionKey(city.id)}
+        onSelectCity={(city) => {
+          resetSimulation();
+          setSelectedRegionKey(city.id);
+          if (currentMode === 'simulator' && regions[city.id]) runSimulation('YELLOW', city.id, regions[city.id]);
+        }}
         onOpenNotifications={() => {
+          resetSimulation();
           setIsNotificationView(true);
           setIsHistoricalView(false);
           markAllRead();
         }}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenHistoricalDisasters={() => {
+          resetSimulation();
           setIsHistoricalView(true);
           setIsNotificationView(false);
         }}
@@ -273,16 +342,20 @@ export default function App() {
           currentMode={currentMode}
           onSelectMode={(mode) => {
             setCurrentMode(mode);
+            if (mode === 'simulator') runSimulation('YELLOW');
+            else resetSimulation();
             setIsHistoricalView(false);
             setIsNotificationView(false);
           }}
           isHistoricalView={isHistoricalView}
           onSelectHistoricalView={(isHistory) => {
+            if (isHistory) resetSimulation();
             setIsHistoricalView(isHistory);
             if (isHistory) setIsNotificationView(false);
           }}
           isNotificationView={isNotificationView}
           onSelectNotificationView={(isNotif) => {
+            if (isNotif) resetSimulation();
             setIsNotificationView(isNotif);
             if (isNotif) {
               setIsHistoricalView(false);
@@ -290,6 +363,7 @@ export default function App() {
             }
           }}
           onOpenAlerts={() => {
+            resetSimulation();
             setIsNotificationView(true);
             setIsHistoricalView(false);
             markAllRead();
@@ -302,6 +376,17 @@ export default function App() {
           {regionError && (
             <div role="status" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               {regionError} Some dashboard sections may be incomplete.
+            </div>
+          )}
+          {regionLoading && (
+            <div role="status" aria-live="polite" className="mb-4 flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-xs font-medium text-cyan-950">
+              <LoaderCircle size={15} className="animate-spin" /> Loading live region data and disaster intelligence…
+            </div>
+          )}
+          {!isNotificationView && !isHistoricalView && currentMode === 'simulator' && simulationTier && (
+            <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-cyan-300 bg-cyan-50 px-3 py-2 text-xs text-cyan-950">
+              <span><strong>SIMULATION ACTIVE · {simulationTier}</strong> Risk conditions shown are mock data, not a live warning.</span>
+              <button type="button" onClick={resetSimulation} className="font-semibold underline underline-offset-2">Return to live data</button>
             </div>
           )}
           {/* 1. If on Notifications Hub View */}
@@ -349,13 +434,17 @@ export default function App() {
                   <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl border bg-slate-50 border-slate-200">
                     <CloudRain size={20} className="text-blue-600 shrink-0" />
                     <div>
-                      <div className="text-[10px] text-slate-500 font-medium">Current Conditions</div>
+                      <div className="text-[10px] text-slate-500 font-medium">{currentMode === 'simulator' && simulationTier ? 'Scenario Telemetry' : 'Current Conditions'}</div>
                       <div className="flex items-baseline gap-1.5">
                         <span className="font-bold text-sm font-mono text-slate-900">
-                          {regionResponses?.currentConditions?.temperature_c == null ? 'Unavailable' : `${regionResponses.currentConditions.temperature_c}°C`}
+                          {currentMode === 'simulator' && simulationTier
+                            ? activeIntelligence?.current_conditions.wind_speed_kmh == null ? 'Unavailable' : `${activeIntelligence.current_conditions.wind_speed_kmh} km/h`
+                            : regionResponses?.currentConditions?.temperature_c == null ? 'Unavailable' : `${regionResponses.currentConditions.temperature_c}°C`}
                         </span>
-                        <span className="max-w-48 truncate text-[11px] font-medium text-slate-600" title={regionResponses?.currentConditions?.condition ?? regionResponses?.currentConditionsError ?? ''}>
-                          {regionResponses?.currentConditions?.condition ?? regionResponses?.currentConditionsError ?? 'Waiting for current weather data'}
+                        <span className="max-w-48 truncate text-[11px] font-medium text-slate-600" title={currentMode === 'simulator' && simulationTier ? 'Simulated wind speed' : regionResponses?.currentConditions?.condition ?? regionResponses?.currentConditionsError ?? ''}>
+                          {currentMode === 'simulator' && simulationTier
+                            ? `${activeIntelligence?.current_conditions.pressure_hpa ?? 'Unavailable'} hPa · ${activeIntelligence?.risk_assessment.level ?? 'UNKNOWN'} risk`
+                            : regionResponses?.currentConditions?.condition ?? regionResponses?.currentConditionsError ?? 'Waiting for current weather data'}
                         </span>
                       </div>
                     </div>
@@ -398,10 +487,11 @@ export default function App() {
                         systemStatusLabel="System: Operational"
                         systemStatusColor="amber"
                         isLightMode={true}
-                        pois={buildMapPois(regionResponses, selectedRegion)}
+                        pois={buildMapPois(displayedResponses, selectedRegion)}
                         cityLabel={selectedCity.name}
                         bounds={selectedRegion}
-                        riskZones={regionResponses?.disasterIntelligence?.risk_zones ?? []}
+                        riskZones={activeIntelligence?.risk_zones ?? []}
+                        isLoading={regionLoading}
                         emptyMessage={Object.values(regionResponses?.infrastructure?.source_errors ?? {}).join(' ') || 'The provider returned no facility coordinates for this region.'}
                       />
 
@@ -447,8 +537,8 @@ export default function App() {
                 <ThreatDetectionModeView
                   city={selectedCity}
                   bounds={selectedRegion}
-                  pois={buildMapPois(regionResponses, selectedRegion)}
-                  disasterIntelligence={regionResponses?.disasterIntelligence ?? null}
+                  pois={buildMapPois(displayedResponses, selectedRegion)}
+                  disasterIntelligence={activeIntelligence}
                   isLoading={regionLoading}
                   error={regionResponses?.disasterIntelligenceError ?? null}
                   showMangroveLayer={showMangroveLayer}
@@ -463,8 +553,8 @@ export default function App() {
                 <TaskEvacuationModeView
                   city={selectedCity}
                   bounds={selectedRegion}
-                  pois={buildMapPois(regionResponses, selectedRegion)}
-                  disasterIntelligence={regionResponses?.disasterIntelligence ?? null}
+                  pois={buildMapPois(displayedResponses, selectedRegion)}
+                  disasterIntelligence={activeIntelligence}
                   isLoading={regionLoading}
                   error={regionResponses?.disasterIntelligenceError ?? null}
                   showMangroveLayer={showMangroveLayer}
@@ -486,9 +576,29 @@ export default function App() {
               {currentMode === 'recovery' && (
                 <InsuranceRecoveryModeView
                   city={selectedCity}
-                  insuranceSummary={regionResponses?.disasterIntelligence?.insurance_summary ?? undefined}
-                  riskZones={regionResponses?.disasterIntelligence?.risk_zones ?? []}
+                  insuranceSummary={activeIntelligence?.insurance_summary ?? undefined}
+                  riskZones={activeIntelligence?.risk_zones ?? []}
                   isLightMode={true}
+                />
+              )}
+
+              {currentMode === 'simulator' && (
+                <SimulatorModeView
+                  regionName={selectedCity.name}
+                  bounds={selectedRegion}
+                  pois={buildMapPois(displayedResponses, selectedRegion)}
+                  intelligence={activeIntelligence}
+                  tier={simulationTier}
+                  onSimulate={runSimulation}
+                  onReset={resetSimulation}
+                  connectionState={connectionState}
+                  simulationAlerts={simulationAlerts}
+                  onBroadcast={async (tier, ward) => {
+                    const result = await api.broadcastSimulatorAlert(selectedRegionKey, tier, ward);
+                    setToastAlert(result.alert);
+                    return result;
+                  }}
+                  isLoading={regionLoading}
                 />
               )}
             </>
@@ -508,6 +618,37 @@ export default function App() {
         isLightMode={true}
       />
 
+      {toastAlert && <AlertToast alert={toastAlert} onClose={() => setToastAlert(null)} />}
+
     </div>
+  );
+}
+
+function AlertToast({ alert, onClose }: { alert: ClimateAlert; onClose: () => void }) {
+  const tone = alert.simulation_tier === 'RED' || alert.severity === 'critical'
+    ? 'border-rose-300 bg-rose-50 text-rose-950'
+    : alert.simulation_tier === 'ORANGE' || alert.severity === 'high'
+      ? 'border-orange-300 bg-orange-50 text-orange-950'
+      : alert.simulation_tier === 'YELLOW' || alert.severity === 'moderate'
+        ? 'border-amber-300 bg-amber-50 text-amber-950'
+        : 'border-emerald-300 bg-emerald-50 text-emerald-950';
+  const zoneLabel = alert.simulation_tier ? `${alert.simulation_tier} ZONE` : alert.severity.toUpperCase();
+
+  return (
+    <aside role="alert" aria-live="assertive" className={`fixed right-4 top-4 z-[80] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-lg border shadow-xl ${tone}`}>
+      <div className="flex items-start gap-3 p-4">
+        <BellRing size={17} className="mt-0.5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <strong className="text-[10px] font-black uppercase tracking-wide">{zoneLabel}</strong>
+            {alert.is_simulation && <span className="rounded border border-current/30 px-1.5 py-0.5 text-[9px] font-bold">TEST</span>}
+          </div>
+          <p className="mt-1 text-sm font-bold leading-snug">{alert.title}</p>
+          <p className="mt-1 line-clamp-3 text-xs leading-relaxed opacity-85">{alert.description}</p>
+          <p className="mt-2 text-[10px] font-semibold opacity-75">{alert.location.name} · closes automatically</p>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Dismiss alert toast" className="rounded p-1 opacity-70 hover:bg-black/5 hover:opacity-100"><X size={16} /></button>
+      </div>
+    </aside>
   );
 }

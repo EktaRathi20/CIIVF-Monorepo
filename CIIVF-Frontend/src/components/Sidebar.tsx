@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   LayoutDashboard, History, Bell, 
-  AlertTriangle, CheckSquare, LifeBuoy, Banknote, 
+  AlertTriangle, CheckSquare, LifeBuoy, Banknote, FlaskConical,
   ChevronRight
 } from 'lucide-react';
 import { OperationalMode } from '../types';
@@ -55,6 +55,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       activeClass: 'bg-teal-50 text-teal-700 border-teal-600 shadow-sm',
       iconColor: 'text-teal-600',
       icon: Banknote,
+    },
+    {
+      mode: 'simulator' as OperationalMode,
+      label: 'Simulator Mode',
+      activeClass: 'bg-cyan-50 text-cyan-800 border-cyan-600 shadow-sm',
+      iconColor: 'text-cyan-700',
+      icon: FlaskConical,
     },
   ];
 

@@ -209,18 +209,24 @@ def check_whatsapp_verification(request: WhatsAppVerificationCheck, background_t
         raise HTTPException(status_code=502, detail=str(error))
 
 
+# sio = socketio.AsyncServer(
+#     async_mode="asgi",
+#     cors_allowed_origins=[
+#         "http://localhost:3000",
+#         "http://127.0.0.1:3000",
+#         "http://localhost:3001",
+#         "http://127.0.0.1:3001",
+#         "http://localhost:5173",
+#         "http://127.0.0.1:5173",
+#         "https://mellifluous-kitten-6f39a8.netlify.app",
+#     ],
+# )
+
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "https://mellifluous-kitten-6f39a8.netlify.app",
-    ],
+    cors_allowed_origins="*" # Set to "*" temporarily to test if it's a CORS issue
 )
+
 alerts: deque[dict[str, Any]] = deque(maxlen=500)
 automatic_alert_fingerprints: deque[str] = deque(maxlen=500)
 

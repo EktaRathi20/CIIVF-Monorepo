@@ -8,6 +8,17 @@ import { TaskItem, CityLocation } from '../../types';
 import { ApiRegion, DisasterIntelligenceResponse } from '../../api';
 import { MapPOI } from '../../types';
 
+const TASK_DEADLINE_MS = 48 * 60 * 60 * 1000;
+
+const formatCountdown = (milliseconds: number) => {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':');
+};
+
 interface TaskEvacuationModeViewProps {
   city: CityLocation;
   bounds: ApiRegion;
@@ -39,10 +50,18 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
 }) => {
   const recommendations = disasterIntelligence?.ai_analysis.recommended_tasks;
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [taskDeadlines, setTaskDeadlines] = useState<Record<string, number>>({});
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  const [operationalDeadline] = useState(() => Date.now() + TASK_DEADLINE_MS);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskWard, setNewTaskWard] = useState(city.name);
   const [newTaskDept, setNewTaskDept] = useState<TaskItem['department']>('Municipal Corp');
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     setTasks((recommendations ?? []).map((task, index) => {
@@ -77,6 +96,14 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
 
   const moveTask = (id: string, targetStatus: TaskItem['status']) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: targetStatus } : t));
+    setTaskDeadlines(prev => {
+      if (targetStatus === 'in_progress') {
+        return { ...prev, [id]: prev[id] ?? Date.now() + TASK_DEADLINE_MS };
+      }
+
+      const { [id]: _removed, ...remaining } = prev;
+      return remaining;
+    });
   };
 
   const handleCreateTask = (e: React.FormEvent) => {
@@ -130,13 +157,31 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
         </div>
 
         {/* Standard Blue Button: Issue Targeted Evacuation matching prompt */}
-        <button
-          onClick={onOpenEvacuationModal}
-          className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-2 shrink-0 border border-blue-400/40 cursor-pointer"
-        >
-          <Send size={15} />
-          <span>Issue Targeted Evacuation</span>
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          {disasterIntelligence?.risk_zones.some(zone => zone.color === 'red') && (
+            <div
+              role="timer"
+              aria-label={`48-hour countdown: ${formatCountdown(Math.max(0, operationalDeadline - currentTime))} remaining`}
+              className={`w-full sm:w-auto px-4 py-2.5 font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 shrink-0 border ${
+                isLightMode
+                  ? 'bg-white text-slate-800 border-slate-300'
+                  : 'bg-slate-800 text-slate-100 border-slate-700'
+              }`}
+            >
+              <Clock size={15} />
+              <span>
+                T-{formatCountdown(Math.max(0, operationalDeadline - currentTime))}
+              </span>
+            </div>
+          )}
+          <button
+            onClick={onOpenEvacuationModal}
+            className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-2 shrink-0 border border-blue-400/40 cursor-pointer"
+          >
+            <Send size={15} />
+            <span>Issue Targeted Evacuation</span>
+          </button>
+        </div>
       </div>
 
       {error && !disasterIntelligence && (
@@ -400,8 +445,13 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
                   <div className={`flex items-center justify-between pt-1 border-t text-[10px] ${
                     isLightMode ? 'border-slate-100 text-slate-500' : 'border-slate-800/80 text-slate-400'
                   }`}>
-                    <span className={`font-semibold ${isLightMode ? 'text-amber-700' : 'text-amber-400'}`}>
-                      {task.timeRemaining}
+                    <span className={`flex items-center gap-1 font-semibold ${isLightMode ? 'text-amber-700' : 'text-amber-400'}`}>
+                      <Clock size={11} />
+                      {taskDeadlines[task.id] !== undefined
+                        ? taskDeadlines[task.id] <= currentTime
+                          ? '48h deadline passed'
+                          : `${formatCountdown(taskDeadlines[task.id] - currentTime)} remaining`
+                        : task.timeRemaining ?? '48h response window'}
                     </span>
                     <div className="flex items-center gap-2">
                       <button

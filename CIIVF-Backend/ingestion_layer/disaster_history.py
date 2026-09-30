@@ -1,16 +1,18 @@
 import codecs
 import csv
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import math
 import threading
 import time
 
 import requests
 
+from ingestion_layer.cache import load_json_cache, save_json_cache
 from ingestion_layer.constant import HISTORY_SEARCH_RADIUS_KM, REGION_COORDS, get_region_coords
 
 IBTRACS_CSV_URL = "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.NI.list.v04r01.csv"
 CACHE_TTL_SECONDS = 6 * 60 * 60
+CACHE_FILENAME = "historical_tracks_cache.json"
 _cache_lock = threading.Lock()
 _cache_loaded_at = 0.0
 _cache_events_by_region = None
@@ -118,7 +120,28 @@ def _get_cached_tracks():
 
     with _cache_lock:
         if _cache_events_by_region is None or time.monotonic() - _cache_loaded_at >= CACHE_TTL_SECONDS:
-            _cache_events_by_region = _download_tracks_by_region()
+            cached_tracks = load_json_cache(
+                CACHE_FILENAME,
+                timedelta(seconds=CACHE_TTL_SECONDS),
+                payload_key="events_by_region",
+                validator=lambda events_by_region: (
+                    isinstance(events_by_region, dict)
+                    and all(
+                        isinstance(events_by_region.get(region_key), list)
+                        for region_key in REGION_COORDS
+                    )
+                ),
+            )
+
+            if cached_tracks is not None:
+                _cache_events_by_region = cached_tracks
+            else:
+                _cache_events_by_region = _download_tracks_by_region()
+                save_json_cache(
+                    CACHE_FILENAME,
+                    _cache_events_by_region,
+                    payload_key="events_by_region",
+                )
             _cache_loaded_at = time.monotonic()
     return _cache_events_by_region
 

@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Banknote, BellRing, CheckCircle2, LoaderCircle, RotateCcw, ShieldAlert, Wind, Wifi, WifiOff, X } from 'lucide-react';
+import { Activity, Banknote, BellRing, CheckCircle2, Clock, LoaderCircle, RotateCcw, ShieldAlert, Wind, Wifi, WifiOff, X } from 'lucide-react';
 import { ApiRegion, api, DisasterIntelligenceResponse, SimulatorBroadcastResponse, WhatsAppConfigurationResponse } from '../../api';
 import { AlertConnectionState, ClimateAlert } from '../../climateAlerts';
 import { MapPOI } from '../../types';
 import { SimulationTier } from '../../simulator';
 import { MapComponent } from '../MapComponent';
+
+const RED_ZONE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 interface SimulatorModeViewProps {
   regionName: string;
@@ -50,6 +52,17 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [broadcastResult, setBroadcastResult] = useState<SimulatorBroadcastResponse | null>(null);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  const [redZoneDeadline, setRedZoneDeadline] = useState<number | null>(null);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    setRedZoneDeadline(tier === 'RED' ? Date.now() + RED_ZONE_WINDOW_MS : null);
+  }, [tier]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -95,6 +108,15 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">Preview how risk overlays, threat indicators, response tasks, and insurance thresholds appear during an event. Simulator values never create alerts or alter backend data.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {tier === 'RED' && redZoneDeadline !== null && (
+            <div
+              role="timer"
+              aria-label={`48-hour red-zone countdown: ${formatCountdown(Math.max(0, redZoneDeadline - currentTime))} remaining`}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-900"
+            >
+              <Clock size={14} /> T-{formatCountdown(Math.max(0, redZoneDeadline - currentTime))}
+            </div>
+          )}
           <button onClick={() => setIsAlertOpen(true)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-cyan-300 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-900 hover:bg-cyan-100"><BellRing size={14} /> Alert preview</button>
           {tier && <button onClick={onReset} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"><RotateCcw size={14} /> Return to live data</button>}
         </div>
@@ -243,4 +265,13 @@ function Metric({ label, value, icon }: { label: string; value: string; icon?: R
 
 function formatINR(value: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+}
+
+function formatCountdown(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':');
 }

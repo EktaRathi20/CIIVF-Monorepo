@@ -32,6 +32,7 @@ export async function getClimateAlerts(signal: AbortSignal): Promise<ClimateAler
 export function createClimateAlertSocket() {
   return io(import.meta.env.VITE_SOCKET_URL || window.location.origin, {
     path: '/socket.io',
+    transports: ['websocket'],
     autoConnect: false,
   });
 }

@@ -19,7 +19,7 @@ interface SimulatorModeViewProps {
   onReset: () => void;
   connectionState: AlertConnectionState;
   simulationAlerts: ClimateAlert[];
-  onBroadcast: (tier: SimulationTier, ward: string, phone: string | null) => Promise<SimulatorBroadcastResponse>;
+  onBroadcast: (tier: SimulationTier, ward: string, phone: string | null, token: string) => Promise<SimulatorBroadcastResponse>;
   isLoading: boolean;
 }
 
@@ -48,6 +48,7 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
   const locations = [...new Set((intelligence?.ai_analysis.recommended_tasks ?? []).map(task => task.location).filter(Boolean))];
   const [selectedWard, setSelectedWard] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [broadcastToken, setBroadcastToken] = useState('');
   const [isAlertOpen, setIsAlertOpen] = useState(true);
   const [whatsappConfiguration, setWhatsappConfiguration] = useState<WhatsAppConfigurationResponse | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
@@ -92,6 +93,11 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
 
   const handleBroadcast = async () => {
     if (!tier || !selectedWard) return;
+    const token = broadcastToken.trim();
+    if (!token) {
+      setBroadcastError('Enter the simulator access token configured by your administrator.');
+      return;
+    }
     const recipient = whatsappNumber.trim();
     if (recipient && !PHONE_PATTERN.test(recipient)) {
       setBroadcastError('Enter the recipient WhatsApp number in international format, for example +14155552671.');
@@ -100,7 +106,7 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
     setIsBroadcasting(true);
     setBroadcastError(null);
     try {
-      const result = await onBroadcast(tier, selectedWard, recipient || null);
+      const result = await onBroadcast(tier, selectedWard, recipient || null, token);
       setBroadcastResult(result);
     } catch (error) {
       setBroadcastError(error instanceof Error ? error.message : 'Could not broadcast the simulator alert.');
@@ -236,6 +242,10 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
                 <ChannelStatus icon={connectionState === 'connected' ? <Wifi size={14} /> : <WifiOff size={14} />} label="Socket.IO" value={connectionState === 'connected' ? 'Connected' : connectionState === 'connecting' ? 'Connecting' : 'Disconnected'} />
                 <ChannelStatus icon={<BellRing size={14} />} label="Sandbox" value={whatsappConfiguration?.delivery_configured ? 'Ready for joined recipients' : configurationError ? 'Configuration unavailable' : 'Not configured'} />
               </div>
+
+              <label className="block text-xs font-semibold text-slate-700" htmlFor="sim-broadcast-token">Simulator access token
+                <input id="sim-broadcast-token" type="password" autoComplete="off" value={broadcastToken} onChange={event => setBroadcastToken(event.target.value)} className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100" />
+              </label>
 
               <label className="block text-xs font-semibold text-slate-700" htmlFor="sim-alert-whatsapp">WhatsApp recipient (optional)
                 <input id="sim-alert-whatsapp" type="tel" inputMode="tel" autoComplete="tel" value={whatsappNumber} onChange={event => setWhatsappNumber(event.target.value)} placeholder="+14155552671" className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100" />

@@ -1,7 +1,6 @@
 from collections import deque
 from datetime import datetime, timezone
 import hmac
-import ipaddress
 import os
 from typing import Any, Literal
 from uuid import uuid4
@@ -326,14 +325,13 @@ async def broadcast_simulator_alert(
     request: Request,
     payload: SimulatorAlertInput,
     background_tasks: BackgroundTasks,
+    x_simulator_token: str | None = Header(default=None),
 ):
-    client_host = request.client.host if request.client else ""
-    try:
-        is_loopback = ipaddress.ip_address(client_host).is_loopback
-    except ValueError:
-        is_loopback = False
-    if not is_loopback:
-        raise HTTPException(status_code=403, detail="Simulator broadcasts are available only from a local development session.")
+    expected_token = os.getenv("SIMULATOR_BROADCAST_TOKEN")
+    if not expected_token:
+        raise HTTPException(status_code=503, detail="Simulator broadcasts are not configured")
+    if not x_simulator_token or not hmac.compare_digest(x_simulator_token, expected_token):
+        raise HTTPException(status_code=401, detail="Invalid simulator access token")
     if payload.region_key not in REGION_DATA:
         raise HTTPException(status_code=422, detail="Unknown region_key")
 

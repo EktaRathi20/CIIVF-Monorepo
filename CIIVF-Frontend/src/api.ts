@@ -210,10 +210,10 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function postRequest<T>(path: string, body: unknown): Promise<T> {
+async function postRequest<T>(path: string, body: unknown, headers: Record<string, string> = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
   if (!response.ok) {
@@ -245,8 +245,8 @@ export const api = {
     request<WhatsAppConfigurationResponse>('/whatsapp/configuration', signal),
   getDisasterIntelligence: (region: string, signal?: AbortSignal) =>
     request<DisasterIntelligenceResponse>(`/disaster-intelligence/${encodeURIComponent(region)}`, signal),
-  broadcastSimulatorAlert: (regionKey: string, tier: 'YELLOW' | 'ORANGE' | 'RED', ward: string, phone: string | null) =>
-    postRequest<SimulatorBroadcastResponse>('/simulator/alerts', { region_key: regionKey, tier, ward, phone }),
+  broadcastSimulatorAlert: (regionKey: string, tier: 'YELLOW' | 'ORANGE' | 'RED', ward: string, phone: string | null, token: string) =>
+    postRequest<SimulatorBroadcastResponse>('/simulator/alerts', { region_key: regionKey, tier, ward, phone }, { 'X-Simulator-Token': token }),
   startWhatsAppVerification: (phone: string) =>
     postRequest<{ status: string }>('/whatsapp/verification/start', { phone }),
   checkWhatsAppVerification: (phone: string, code: string, action: 'subscribe' | 'unsubscribe') =>

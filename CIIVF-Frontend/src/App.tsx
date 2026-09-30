@@ -593,8 +593,8 @@ export default function App() {
                   onReset={resetSimulation}
                   connectionState={connectionState}
                   simulationAlerts={simulationAlerts}
-                  onBroadcast={async (tier, ward) => {
-                    const result = await api.broadcastSimulatorAlert(selectedRegionKey, tier, ward);
+                  onBroadcast={async (tier, ward, phone) => {
+                    const result = await api.broadcastSimulatorAlert(selectedRegionKey, tier, ward, phone);
                     setToastAlert(result.alert);
                     return result;
                   }}

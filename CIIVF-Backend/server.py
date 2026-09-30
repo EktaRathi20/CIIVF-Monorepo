@@ -29,6 +29,8 @@ from whatsapp import (
     check_verification,
     get_configuration_status,
     send_alert_to_subscribers,
+    send_welcome_message,
+    send_whatsapp_message,
     start_verification,
 )
 
@@ -154,6 +156,7 @@ class SimulatorAlertInput(BaseModel):
     region_key: str = Field(min_length=1, max_length=80)
     tier: Literal["YELLOW", "ORANGE", "RED"]
     ward: str = Field(min_length=1, max_length=160)
+    phone: str | None = Field(default=None, pattern=r"^\+[1-9]\d{7,14}$")
 
 
 class WhatsAppVerificationStart(BaseModel):
@@ -185,10 +188,19 @@ def start_whatsapp_verification(request: WhatsAppVerificationStart):
 
 
 @api_app.post("/api/whatsapp/verification/check")
-def check_whatsapp_verification(request: WhatsAppVerificationCheck):
+def check_whatsapp_verification(request: WhatsAppVerificationCheck, background_tasks: BackgroundTasks):
     try:
-        check_verification(request.phone, request.code, request.action)
-        return {"status": "approved", "action": request.action}
+        is_new_subscription = check_verification(request.phone, request.code, request.action)
+        welcome_message = "not_applicable"
+        if request.action == "subscribe":
+            if is_new_subscription and get_configuration_status()["delivery_configured"]:
+                background_tasks.add_task(send_welcome_message, request.phone)
+                welcome_message = "queued"
+            elif is_new_subscription:
+                welcome_message = "not_configured"
+            else:
+                welcome_message = "already_subscribed"
+        return {"status": "approved", "action": request.action, "welcome_message": welcome_message}
     except InvalidVerification as error:
         raise HTTPException(status_code=400, detail=str(error))
     except WhatsAppNotConfigured as error:
@@ -326,16 +338,18 @@ async def broadcast_simulator_alert(
         "RED": {"severity": "critical", "wind_speed_kmh": 145, "pressure_hpa": 970, "storm_surge_meters": 2.8},
     }[tier]
     region_name = region["name"]
+    message_description = (
+        f"CIIVF SIMULATION EXERCISE, not a live or official warning. Zone: {tier}. "
+        f"Area: {payload.ward}, {region_name}. Simulated conditions: "
+        f"wind {values['wind_speed_kmh']} km/h, pressure {values['pressure_hpa']} hPa, "
+        f"storm surge {values['storm_surge_meters']:.1f} m. This message is for testing only."
+    )
     record = {
         "id": str(uuid4()),
         "hazard_type": "simulated_cyclone_risk",
         "severity": values["severity"],
         "title": f"SIMULATION: {tier} zone exercise · {payload.ward}",
-        "description": (
-            f"Exercise message for {payload.ward}, {region_name}: the {tier} risk scenario is active. "
-            f"Simulated wind {values['wind_speed_kmh']} km/h, pressure {values['pressure_hpa']} hPa, "
-            f"and surge {values['storm_surge_meters']:.1f} m. This is a test alert, not a live warning."
-        ),
+        "description": message_description,
         "location": {
             "name": payload.ward,
             "region_key": payload.region_key,
@@ -352,13 +366,19 @@ async def broadcast_simulator_alert(
     alerts.appendleft(record)
     await sio.emit("climate_alert", record)
     delivery_configured = get_configuration_status()["delivery_configured"]
-    if delivery_configured:
-        background_tasks.add_task(send_alert_to_subscribers, record)
+    if payload.phone and delivery_configured:
+        background_tasks.add_task(send_whatsapp_message, payload.phone, message_description)
+    whatsapp_status = (
+        "not_requested" if not payload.phone
+        else "queued" if delivery_configured
+        else "not_configured"
+    )
     return {
         "alert": record,
+        "whatsapp_preview": message_description,
         "channels": {
             "socket_io": "broadcasted",
-            "whatsapp": "queued" if delivery_configured else "not_configured",
+            "whatsapp": whatsapp_status,
         },
     }
 

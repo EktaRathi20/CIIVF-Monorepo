@@ -81,9 +81,10 @@ export interface WhatsAppConfigurationResponse {
 
 export interface SimulatorBroadcastResponse {
   alert: ClimateAlert;
+  whatsapp_preview: string;
   channels: {
     socket_io: 'broadcasted';
-    whatsapp: 'queued' | 'not_configured';
+    whatsapp: 'queued' | 'not_configured' | 'not_requested';
   };
 }
 
@@ -244,10 +245,10 @@ export const api = {
     request<WhatsAppConfigurationResponse>('/whatsapp/configuration', signal),
   getDisasterIntelligence: (region: string, signal?: AbortSignal) =>
     request<DisasterIntelligenceResponse>(`/disaster-intelligence/${encodeURIComponent(region)}`, signal),
-  broadcastSimulatorAlert: (regionKey: string, tier: 'YELLOW' | 'ORANGE' | 'RED', ward: string) =>
-    postRequest<SimulatorBroadcastResponse>('/simulator/alerts', { region_key: regionKey, tier, ward }),
+  broadcastSimulatorAlert: (regionKey: string, tier: 'YELLOW' | 'ORANGE' | 'RED', ward: string, phone: string | null) =>
+    postRequest<SimulatorBroadcastResponse>('/simulator/alerts', { region_key: regionKey, tier, ward, phone }),
   startWhatsAppVerification: (phone: string) =>
     postRequest<{ status: string }>('/whatsapp/verification/start', { phone }),
   checkWhatsAppVerification: (phone: string, code: string, action: 'subscribe' | 'unsubscribe') =>
-    postRequest<{ status: string; action: string }>('/whatsapp/verification/check', { phone, code, action }),
+    postRequest<{ status: string; action: string; welcome_message: 'queued' | 'already_subscribed' | 'not_configured' | 'not_applicable' }>('/whatsapp/verification/check', { phone, code, action }),
 };

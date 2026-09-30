@@ -7,6 +7,7 @@ import { SimulationTier } from '../../simulator';
 import { MapComponent } from '../MapComponent';
 
 const RED_ZONE_WINDOW_MS = 48 * 60 * 60 * 1000;
+const PHONE_PATTERN = /^\+[1-9]\d{7,14}$/;
 
 interface SimulatorModeViewProps {
   regionName: string;
@@ -18,7 +19,7 @@ interface SimulatorModeViewProps {
   onReset: () => void;
   connectionState: AlertConnectionState;
   simulationAlerts: ClimateAlert[];
-  onBroadcast: (tier: SimulationTier, ward: string) => Promise<SimulatorBroadcastResponse>;
+  onBroadcast: (tier: SimulationTier, ward: string, phone: string | null) => Promise<SimulatorBroadcastResponse>;
   isLoading: boolean;
 }
 
@@ -46,6 +47,7 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
   const budget = intelligence?.preparedness_budget;
   const locations = [...new Set((intelligence?.ai_analysis.recommended_tasks ?? []).map(task => task.location).filter(Boolean))];
   const [selectedWard, setSelectedWard] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
   const [isAlertOpen, setIsAlertOpen] = useState(true);
   const [whatsappConfiguration, setWhatsappConfiguration] = useState<WhatsAppConfigurationResponse | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
@@ -54,6 +56,11 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
   const [broadcastResult, setBroadcastResult] = useState<SimulatorBroadcastResponse | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [redZoneDeadline, setRedZoneDeadline] = useState<number | null>(null);
+  const whatsappPreview = broadcastResult?.whatsapp_preview ?? (
+    tier
+      ? `CIIVF SIMULATION EXERCISE, not a live or official warning. Zone: ${tier}. Area: ${selectedWard || regionName}, ${regionName}. Simulated conditions: wind ${conditions?.wind_speed_kmh ?? 'unavailable'} km/h, pressure ${conditions?.pressure_hpa ?? 'unavailable'} hPa, storm surge ${conditions?.storm_surge_meters?.toFixed(1) ?? 'unavailable'} m. This message is for testing only.`
+      : 'Select a simulation zone to preview its WhatsApp message.'
+  );
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -85,13 +92,16 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
 
   const handleBroadcast = async () => {
     if (!tier || !selectedWard) return;
-    if (whatsappConfiguration?.delivery_configured && !window.confirm('This exercise message will be sent to verified WhatsApp subscribers. Continue?')) return;
+    const recipient = whatsappNumber.trim();
+    if (recipient && !PHONE_PATTERN.test(recipient)) {
+      setBroadcastError('Enter the recipient WhatsApp number in international format, for example +14155552671.');
+      return;
+    }
     setIsBroadcasting(true);
     setBroadcastError(null);
     try {
-      const result = await onBroadcast(tier, selectedWard);
+      const result = await onBroadcast(tier, selectedWard, recipient || null);
       setBroadcastResult(result);
-      setIsAlertOpen(false);
     } catch (error) {
       setBroadcastError(error instanceof Error ? error.message : 'Could not broadcast the simulator alert.');
     } finally {
@@ -217,27 +227,32 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
               </label>
 
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold text-slate-800">Exercise message</p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-600">SIMULATION: {tier} zone conditions for {selectedWard} in {regionName}. Wind {conditions?.wind_speed_kmh ?? 'unavailable'} km/h, pressure {conditions?.pressure_hpa ?? 'unavailable'} hPa, surge {conditions?.storm_surge_meters?.toFixed(1) ?? 'unavailable'} m. Test alert only, not a live warning.</p>
+                <p className="text-xs font-semibold text-slate-800">WhatsApp message preview</p>
+                <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">{whatsappPreview}</p>
+                {broadcastResult?.channels.whatsapp !== 'queued' && <p className="mt-2 text-[11px] font-medium text-slate-500">Preview only. No WhatsApp message was sent.</p>}
               </div>
 
               <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2">
                 <ChannelStatus icon={connectionState === 'connected' ? <Wifi size={14} /> : <WifiOff size={14} />} label="Socket.IO" value={connectionState === 'connected' ? 'Connected' : connectionState === 'connecting' ? 'Connecting' : 'Disconnected'} />
-                <ChannelStatus icon={<BellRing size={14} />} label="WhatsApp" value={whatsappConfiguration?.delivery_configured ? 'Configured for verified subscribers' : configurationError ? 'Configuration unavailable' : 'Not configured; socket only'} />
+                <ChannelStatus icon={<BellRing size={14} />} label="Sandbox" value={whatsappConfiguration?.delivery_configured ? 'Ready for joined recipients' : configurationError ? 'Configuration unavailable' : 'Not configured'} />
               </div>
 
-              {configurationError && <p role="status" className="text-[11px] text-amber-800">Could not check WhatsApp delivery settings: {configurationError}</p>}
+              <label className="block text-xs font-semibold text-slate-700" htmlFor="sim-alert-whatsapp">WhatsApp recipient (optional)
+                <input id="sim-alert-whatsapp" type="tel" inputMode="tel" autoComplete="tel" value={whatsappNumber} onChange={event => setWhatsappNumber(event.target.value)} placeholder="+14155552671" className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100" />
+              </label>
+              <p className="-mt-3 text-[11px] text-slate-500">Leave blank for a Socket.IO-only alert and WhatsApp preview. Recipients must have joined your Sandbox.</p>
+
               {broadcastError && <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{broadcastError}</p>}
               {broadcastResult && (
                 <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-                  <p className="flex items-center gap-1.5 font-semibold"><CheckCircle2 size={14} /> Test alert sent over Socket.IO. WhatsApp: {broadcastResult.channels.whatsapp === 'queued' ? 'queued for configured subscribers' : 'not configured'}.</p>
+                  <p className="flex items-center gap-1.5 font-semibold"><CheckCircle2 size={14} /> Test alert sent over Socket.IO. WhatsApp: {broadcastResult.channels.whatsapp === 'queued' ? 'queued to the entered Sandbox number' : broadcastResult.channels.whatsapp === 'not_requested' ? 'not sent; no recipient entered' : 'not sent; Sandbox service is unavailable'}.</p>
                   <p className="mt-1">{broadcastResult.alert.title}</p>
                 </div>
               )}
               {!broadcastResult && latestScenarioAlert && <p className="text-[11px] text-slate-500">A matching scenario alert was received over Socket.IO.</p>}
 
               <div className="flex flex-col-reverse justify-between gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
-                <p className="text-[10px] leading-relaxed text-slate-500">Broadcasting sends a clearly marked exercise alert. WhatsApp delivery is attempted only when backend delivery is configured.</p>
+                <p className="text-[10px] leading-relaxed text-slate-500">The WhatsApp recipient is optional. Without a number, the alert goes only to Socket.IO and shows a WhatsApp preview.</p>
                 <button type="button" onClick={handleBroadcast} disabled={isBroadcasting || connectionState !== 'connected'} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-cyan-800 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-900 disabled:cursor-not-allowed disabled:opacity-50">
                   {isBroadcasting ? <><LoaderCircle size={14} className="animate-spin" /> Sending…</> : <><BellRing size={14} /> Broadcast test alert</>}
                 </button>

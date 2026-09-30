@@ -6,3 +6,4 @@ requests
 python-dotenv
 python-socketio
 twilio
+google-cloud-aiplatform

@@ -23,7 +23,15 @@ export const AssessmentCards: React.FC<AssessmentCardsProps> = ({ city, infrastr
       icon: Building2,
       color: 'text-emerald-600',
     },
-    { title: 'Warnings and risk', value: 'Not connected', detail: 'No warning or risk-assessment API', icon: Database, color: 'text-amber-600' },
+    {
+      title: 'Warnings and risk',
+      value: city.operationalRisk.level,
+      detail: city.operationalRisk.level === 'Unavailable'
+        ? 'Risk assessment unavailable'
+        : `${city.riskScore}/100 screening score · not an official warning`,
+      icon: Database,
+      color: city.riskLevel === 'Red' ? 'text-rose-600' : city.riskLevel === 'Orange' ? 'text-orange-600' : city.riskLevel === 'Moderate' ? 'text-amber-600' : 'text-emerald-600',
+    },
   ];
 
   return (

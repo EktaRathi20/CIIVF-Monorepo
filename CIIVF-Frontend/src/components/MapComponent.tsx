@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Circle, CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
-import { Hospital, Home, MapPin } from 'lucide-react';
+import { Hospital, Home, LoaderCircle, MapPin } from 'lucide-react';
 import { ApiRegion, DisasterRiskZone } from '../api';
 import { MapPOI } from '../types';
 
@@ -21,6 +21,7 @@ interface MapComponentProps {
   bounds?: ApiRegion;
   riskZones?: DisasterRiskZone[];
   emptyMessage?: string;
+  isLoading?: boolean;
 }
 
 function FitRegionBounds({ bounds }: { bounds: ApiRegion }) {
@@ -45,6 +46,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   bounds,
   riskZones = [],
   emptyMessage = 'No mapped facility coordinates were returned.',
+  isLoading = false,
 }) => {
   const [activeType, setActiveType] = useState<'all' | 'shelter' | 'hospital'>('all');
   const visiblePois = pois.filter(poi =>
@@ -141,12 +143,16 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         ))}
       </div>
 
-      {visiblePois.length === 0 && visibleZones.length === 0 && (
+      {isLoading ? (
+        <div role="status" aria-live="polite" className="pointer-events-none absolute inset-x-4 top-1/2 z-[900] mx-auto flex max-w-lg -translate-y-1/2 items-center justify-center gap-2 rounded-md border border-cyan-200 bg-white/95 px-4 py-3 text-center text-xs font-medium text-cyan-950 shadow-sm">
+          <LoaderCircle size={15} className="animate-spin" /> Loading map facilities and risk layers…
+        </div>
+      ) : visiblePois.length === 0 && visibleZones.length === 0 ? (
         <div className="pointer-events-none absolute inset-x-4 top-1/2 z-[900] mx-auto max-w-lg -translate-y-1/2 rounded-md border border-slate-200 bg-white/95 px-4 py-3 text-center shadow-sm">
           <p className="text-sm font-semibold text-slate-900">No facility markers for {cityLabel}</p>
           <p className="mt-1 break-words text-xs leading-relaxed text-slate-600">{emptyMessage}</p>
         </div>
-      )}
+      ) : null}
     </section>
   );
 };

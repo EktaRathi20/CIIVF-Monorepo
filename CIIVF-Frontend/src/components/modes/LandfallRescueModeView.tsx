@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  AlertOctagon, Send, ShieldAlert, Navigation, 
-  MapPin, CheckCircle2, AlertTriangle, Clock, RefreshCw, UserCheck
+  Navigation, RefreshCw, UserCheck, Send, MapPin
 } from 'lucide-react';
 import { ChatMessage, CityLocation } from '../../types';
 import { INITIAL_CHAT } from '../../data/mockData';
@@ -19,21 +18,22 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
-  const samplePrompts = [
-    'Request safe route for Ambulance Unit 3 to Medical College',
-    'Is Kona Expressway passable for 5-ton relief trucks?',
-    'Report water depth at Chittaranjan Avenue & MG Road crossing',
-    'Alternative route to Bidhannagar Sector V from Alipore'
+  // Quick chips that pre-fill the input box
+  const quickChips = [
+    '/shelter current loc - ',
+    '/safe-route to Hospital from - ',
+    '/flood-status at - ',
+    '/convoy-clearance from - '
   ];
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const query = textToSend || inputText;
-    if (!query.trim()) return;
+    if (!query.trim() || isTyping) return;
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: 'officer',
-      senderName: 'Officer In-Charge (EMS Dispatch)',
+      senderName: 'Officer Dispatch',
       text: query.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST'
     };
@@ -42,92 +42,50 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
     setInputText('');
     setIsTyping(true);
 
-    // Simulate system verified path response
-    setTimeout(() => {
-      let response: ChatMessage;
+    try {
+      const response = await fetch('http://localhost:8000/api/dispatch-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query: query.trim(),
+          region: city.id
+        }),
+      });
 
-      if (query.toLowerCase().includes('kona') || query.toLowerCase().includes('truck')) {
-        response = {
-          id: `msg-${Date.now() + 1}`,
-          sender: 'system',
-          senderName: 'ClimaGuard Verified Dispatch',
-          text: 'Verified Transit Clearance for Kona Expressway Corridor:',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST',
-          verifiedRoute: {
-            origin: 'Howrah Toll Plaza',
-            destination: 'Kolkata Central Logistics Depot',
-            clearanceStatus: 'CAUTION_RESTRICTED',
-            waterDepth: '0.22m max (Outer left lane pooled)',
-            recommendedPath: 'Maintain center 2 lanes on Kona Flyover. Avoid Nibra underpass. Cross via Vidyasagar Setu (Second Hooghly Bridge).',
-            waypoints: [
-              'Nibra Junction (Diverted to upper elevated deck)',
-              'Second Hooghly Bridge (Wind gusts 85 km/h - Speed limit 30 km/h)',
-              'AJC Bose Ramp (Clear)'
-            ],
-            sensorVerification: 'GloFAS Bridge Anemometer #B-09 & Toll CCTV Telemetry active.',
-            validityWindow: 'Valid for next 30 minutes.'
-          }
-        };
-      } else if (query.toLowerCase().includes('chittaranjan') || query.toLowerCase().includes('depth')) {
-        response = {
-          id: `msg-${Date.now() + 1}`,
-          sender: 'system',
-          senderName: 'ClimaGuard Verified Dispatch',
-          text: 'Verified Water Depth Telemetry for Chittaranjan Ave & Central Kolkata:',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST',
-          verifiedRoute: {
-            origin: 'Central Metro Corridor',
-            destination: 'MG Road Junction',
-            clearanceStatus: 'IMPASSABLE_FLOOD',
-            waterDepth: '0.62m (Severe Urban Pooling)',
-            recommendedPath: 'DO NOT ENTER Chittaranjan Ave. Divert all light and emergency vehicles via Amherst Street (Raja Rammohan Roy Sarani). Water depth: 0.15m.',
-            waypoints: [
-              'CR Avenue (IMPASSABLE: Sluice gate W-17 overflow)',
-              'Amherst Street (Passable for emergency ambulances)',
-              'Bidhan Sarani (Clear elevated tramway)'
-            ],
-            sensorVerification: 'KMC Sump Ultrasonic Sensor US-412 reports 0.62m at 14:10 IST.',
-            validityWindow: 'Critical flood crest active until 16:30 IST.'
-          }
-        };
-      } else {
-        response = {
-          id: `msg-${Date.now() + 1}`,
-          sender: 'system',
-          senderName: 'ClimaGuard Verified Dispatch',
-          text: `Verified Routing & Hazard Clearance for: "${query}"`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST',
-          verifiedRoute: {
-            origin: 'Current Sector Staging Post',
-            destination: 'Designated Safe Medical Center',
-            clearanceStatus: 'VERIFIED_CLEAR',
-            waterDepth: '0.18m (Passable for all emergency vehicles)',
-            recommendedPath: 'Route verified via Eastern Metropolitan Bypass (EM Bypass) elevated expressway. All culverts clear.',
-            waypoints: [
-              'Ultadanga Underpass (Pumps operational, water cleared)',
-              'Science City Interchange (Elevated corridor open)',
-              'Ruby Crossing (Clear runway)'
-            ],
-            sensorVerification: 'Disaster Command Center Verified GPS & GloFAS river telemetry grid.',
-            validityWindow: 'Cleared for next 45 minutes.'
-          }
-        };
-      }
+      if (!response.ok) throw new Error('Network response was not ok');
+      const aiData = await response.json();
 
-      setMessages(prev => [...prev, response]);
+      const systemMsg: ChatMessage = {
+        id: `msg-${Date.now() + 1}`,
+        sender: 'system',
+        senderName: 'ClimaGuard Verified Dispatch',
+        text: aiData.text,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST',
+        verifiedRoute: aiData.verifiedRoute
+      };
+
+      setMessages(prev => [...prev, systemMsg]);
+    } catch (error) {
+      console.error("Chat Error:", error);
+      const errorMsg: ChatMessage = {
+        id: `msg-${Date.now() + 1}`,
+        sender: 'system',
+        senderName: 'System Error',
+        text: 'Telemetry failed. Switch to manual radio.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST',
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
       setIsTyping(false);
-    }, 900);
+    }
   };
 
   return (
     <div className="space-y-4">
-
-      {/* 2. Standard, Clean Chat Interface (Like standard support/dispatch, NOT sci-fi bot) */}
       <div className={`border rounded-xl overflow-hidden shadow-sm flex flex-col h-[520px] transition-colors ${
-        isLightMode
-          ? 'bg-white border-slate-200/90'
-          : 'bg-slate-900 border-slate-800'
+        isLightMode ? 'bg-white border-slate-200/90' : 'bg-slate-900 border-slate-800'
       }`}>
+        
         {/* Chat Header */}
         <div className={`px-4 py-3 border-b flex items-center justify-between ${
           isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
@@ -142,19 +100,13 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
               <div className={`text-xs font-bold flex items-center gap-1.5 ${
                 isLightMode ? 'text-slate-900' : 'text-white'
               }`}>
-                <span>Emergency Operations Dispatch Terminal</span>
+                <span>Tactical Action Terminal</span>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
               <div className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                Ground Officer Safe Route Verification & Inundation Telemetry
+                Manual GPS Override Active
               </div>
             </div>
-          </div>
-
-          <div className={`text-[11px] font-mono hidden sm:block ${
-            isLightMode ? 'text-slate-500' : 'text-slate-400'
-          }`}>
-            Connected to GloFAS & KMC IoT Sump Grid
           </div>
         </div>
 
@@ -165,10 +117,7 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
           {messages.map((msg) => {
             const isOfficer = msg.sender === 'officer';
             return (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${isOfficer ? 'items-end' : 'items-start'}`}
-              >
+              <div key={msg.id} className={`flex flex-col ${isOfficer ? 'items-end' : 'items-start'}`}>
                 <div className="flex items-center gap-2 mb-1 px-1">
                   <span className={`text-[11px] font-bold font-mono ${
                     isLightMode ? 'text-slate-700' : 'text-slate-300'
@@ -182,23 +131,19 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
                   </span>
                 </div>
 
-                <div
-                  className={`max-w-xl rounded-xl p-3.5 text-xs ${
-                    isOfficer
-                      ? 'bg-blue-600 text-white rounded-tr-none shadow-sm'
-                      : isLightMode
-                      ? 'bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-xs'
-                      : 'bg-slate-900 border border-slate-700/80 text-slate-200 rounded-tl-none shadow-md'
-                  }`}
-                >
+                <div className={`max-w-xl rounded-xl p-3.5 text-xs ${
+                  isOfficer
+                    ? 'bg-blue-600 text-white rounded-tr-none shadow-sm'
+                    : isLightMode
+                    ? 'bg-white border border-slate-200 text-slate-800 rounded-tl-none shadow-xs'
+                    : 'bg-slate-900 border border-slate-700/80 text-slate-200 rounded-tl-none shadow-md'
+                }`}>
                   <p className="leading-relaxed">{msg.text}</p>
 
-                  {/* Verified Route Data Card from system */}
+                  {/* Verified Route Data Card */}
                   {msg.verifiedRoute && (
                     <div className={`mt-3 p-3 rounded-lg border text-xs space-y-2 ${
-                      isLightMode
-                        ? 'bg-slate-50 border-slate-200 text-slate-800'
-                        : 'bg-slate-950 border-slate-800 text-slate-200'
+                      isLightMode ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-950 border-slate-800 text-slate-200'
                     }`}>
                       <div className={`flex items-center justify-between pb-1.5 border-b ${
                         isLightMode ? 'border-slate-200' : 'border-slate-800'
@@ -252,12 +197,6 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
                           ))}
                         </ul>
                       </div>
-
-                      <div className={`pt-1.5 border-t text-[10px] font-mono ${
-                        isLightMode ? 'border-slate-200 text-slate-500' : 'border-slate-800 text-slate-500'
-                      }`}>
-                        {msg.verifiedRoute.sensorVerification}
-                      </div>
                     </div>
                   )}
                 </div>
@@ -267,39 +206,37 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
 
           {isTyping && (
             <div className={`flex items-center gap-2 text-xs italic p-2.5 rounded-lg max-w-xs ${
-              isLightMode
-                ? 'bg-white border border-slate-200 text-slate-600 shadow-xs'
-                : 'bg-slate-900 border border-slate-800 text-slate-400'
+              isLightMode ? 'bg-white border border-slate-200 text-slate-600 shadow-xs' : 'bg-slate-900 border border-slate-800 text-slate-400'
             }`}>
               <RefreshCw size={13} className="animate-spin text-blue-600" />
-              <span>Cross-verifying water depth sensors & bridge gates...</span>
+              <span>Analyzing tactical routing...</span>
             </div>
           )}
         </div>
 
-        {/* Quick Query Suggestions */}
+        {/* Quick Command Chips */}
         <div className={`px-4 py-2 border-t flex items-center gap-2 overflow-x-auto text-xs ${
           isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/90 border-slate-800'
         }`}>
           <span className={`text-[10px] font-mono uppercase shrink-0 ${
             isLightMode ? 'text-slate-500' : 'text-slate-400'
-          }`}>Quick Queries:</span>
-          {samplePrompts.map((prompt, i) => (
+          }`}>Quick Commands:</span>
+          {quickChips.map((chip, i) => (
             <button
               key={i}
-              onClick={() => handleSendMessage(prompt)}
-              className={`px-2.5 py-1 rounded-md whitespace-nowrap text-[11px] transition-colors shrink-0 cursor-pointer ${
+              onClick={() => setInputText(chip)}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap text-[11px] transition-colors shrink-0 cursor-pointer ${
                 isLightMode
                   ? 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-medium'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
               }`}
             >
-              {prompt}
+              {chip.replace(' - ', '')}
             </button>
           ))}
         </div>
 
-        {/* Input Bar */}
+        {/* Manual Input Bar */}
         <div className={`p-3 border-t flex items-center gap-2 ${
           isLightMode ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
         }`}>
@@ -308,7 +245,7 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            placeholder="Officer dispatch query (e.g. Request clearance for Ward 17 to SSKM Hospital)..."
+            placeholder="Type your command and location..."
             className={`flex-1 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 ${
               isLightMode
                 ? 'bg-white border border-slate-300 text-slate-900 placeholder-slate-400'
@@ -317,14 +254,15 @@ export const LandfallRescueModeView: React.FC<LandfallRescueModeViewProps> = ({
           />
           <button
             onClick={() => handleSendMessage()}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+            disabled={!inputText.trim() || isTyping}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
           >
             <span>Dispatch</span>
             <Send size={13} />
           </button>
         </div>
+        
       </div>
     </div>
   );
 };
-

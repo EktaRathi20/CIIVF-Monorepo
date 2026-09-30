@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle2, CircleHelp, Clock3, Map, ShieldAlert, Wind } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CircleHelp, Clock3, LoaderCircle, Map, ShieldAlert, Wind } from 'lucide-react';
 import { ApiRegion, DisasterIntelligenceResponse } from '../../api';
 import { CityLocation, MapPOI } from '../../types';
 import { MapComponent } from '../MapComponent';
@@ -26,8 +26,8 @@ const riskTone: Record<string, string> = {
   UNKNOWN: 'border-slate-200 bg-slate-50 text-slate-600',
 };
 
-const formatValue = (value: number | null | undefined, unit: string, digits = 0) =>
-  value == null ? 'Unavailable' : `${value.toFixed(digits)}${unit}`;
+const formatValue = (value: number | null | undefined, unit: string, digits = 0, isLoading = false) =>
+  value == null ? isLoading ? 'Loading…' : 'Unavailable' : `${value.toFixed(digits)}${unit}`;
 
 export const ThreatDetectionModeView: React.FC<ThreatDetectionModeViewProps> = ({
   city,
@@ -73,6 +73,7 @@ export const ThreatDetectionModeView: React.FC<ThreatDetectionModeViewProps> = (
           Ingestion is incomplete: {disasterIntelligence.data_quality.ingestion_error}
         </div>
       )}
+      {isLoading && <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-medium text-cyan-950"><LoaderCircle size={14} className="animate-spin" />Loading live telemetry, history, and response resources…</div>}
       {error && !disasterIntelligence && (
         <div role="status" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
           Disaster intelligence could not be loaded: {error}
@@ -81,8 +82,8 @@ export const ThreatDetectionModeView: React.FC<ThreatDetectionModeViewProps> = (
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric icon={<ShieldAlert size={16} />} label="Risk score" value={assessment ? `${assessment.score}/100` : 'Unavailable'} detail={assessment?.method ?? 'Waiting for API response'} />
-        <Metric icon={<Wind size={16} />} label="Wind speed" value={formatValue(conditions?.wind_speed_kmh, ' km/h', 1)} detail="Current observation" />
-        <Metric icon={<AlertTriangle size={16} />} label="Storm surge" value={formatValue(conditions?.storm_surge_meters, ' m', 2)} detail="Measured source value only" />
+        <Metric icon={<Wind size={16} />} label="Wind speed" value={formatValue(conditions?.wind_speed_kmh, ' km/h', 1, isLoading)} detail="Current observation" />
+        <Metric icon={<AlertTriangle size={16} />} label="Storm surge" value={formatValue(conditions?.storm_surge_meters, ' m', 2, isLoading)} detail="Measured source value only" />
         <Metric icon={<Map size={16} />} label="Screening zones" value={String(zones.length)} detail="Returned by disaster intelligence" />
       </div>
 
@@ -101,6 +102,7 @@ export const ThreatDetectionModeView: React.FC<ThreatDetectionModeViewProps> = (
             cityLabel={city.name}
             bounds={bounds}
             riskZones={zones}
+            isLoading={isLoading}
             emptyMessage="The API returned no facility coordinates for this region."
           />
         </section>

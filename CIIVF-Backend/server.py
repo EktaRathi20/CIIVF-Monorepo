@@ -1,11 +1,12 @@
 from collections import deque
 from datetime import datetime, timezone
 import hmac
+import ipaddress
 import os
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, FastAPI, Header, Query, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Header, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import socketio
@@ -149,6 +150,12 @@ class ClimateAlertInput(BaseModel):
     measurements: dict[str, Any] = Field(default_factory=dict)
 
 
+class SimulatorAlertInput(BaseModel):
+    region_key: str = Field(min_length=1, max_length=80)
+    tier: Literal["YELLOW", "ORANGE", "RED"]
+    ward: str = Field(min_length=1, max_length=160)
+
+
 class WhatsAppVerificationStart(BaseModel):
     phone: str = Field(pattern=r"^\+[1-9]\d{7,14}$")
 
@@ -206,7 +213,7 @@ alerts: deque[dict[str, Any]] = deque(maxlen=500)
 
 @api_app.get("/api/alerts")
 def list_alerts(limit: int = Query(100, ge=1, le=500)):
-    return list(alerts)[:limit]
+    return [alert for alert in alerts if not alert.get("is_simulation")][:limit]
 
 
 @api_app.post("/api/alerts", status_code=201)
@@ -231,6 +238,67 @@ async def ingest_alert(
     if get_configuration_status()["delivery_configured"]:
         background_tasks.add_task(send_alert_to_subscribers, record)
     return record
+
+
+@api_app.post("/api/simulator/alerts", status_code=201)
+async def broadcast_simulator_alert(
+    request: Request,
+    payload: SimulatorAlertInput,
+    background_tasks: BackgroundTasks,
+):
+    client_host = request.client.host if request.client else ""
+    try:
+        is_loopback = ipaddress.ip_address(client_host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if not is_loopback:
+        raise HTTPException(status_code=403, detail="Simulator broadcasts are available only from a local development session.")
+    if payload.region_key not in REGION_DATA:
+        raise HTTPException(status_code=422, detail="Unknown region_key")
+
+    tier = payload.tier
+    region = REGION_DATA[payload.region_key]
+    values = {
+        "YELLOW": {"severity": "moderate", "wind_speed_kmh": 76, "pressure_hpa": 1001, "storm_surge_meters": 0.8},
+        "ORANGE": {"severity": "high", "wind_speed_kmh": 101, "pressure_hpa": 988, "storm_surge_meters": 1.5},
+        "RED": {"severity": "critical", "wind_speed_kmh": 145, "pressure_hpa": 970, "storm_surge_meters": 2.8},
+    }[tier]
+    region_name = region["name"]
+    record = {
+        "id": str(uuid4()),
+        "hazard_type": "simulated_cyclone_risk",
+        "severity": values["severity"],
+        "title": f"SIMULATION: {tier} zone exercise · {payload.ward}",
+        "description": (
+            f"Exercise message for {payload.ward}, {region_name}: the {tier} risk scenario is active. "
+            f"Simulated wind {values['wind_speed_kmh']} km/h, pressure {values['pressure_hpa']} hPa, "
+            f"and surge {values['storm_surge_meters']:.1f} m. This is a test alert, not a live warning."
+        ),
+        "location": {
+            "name": payload.ward,
+            "region_key": payload.region_key,
+            "latitude": (region["min_lat"] + region["max_lat"]) / 2,
+            "longitude": (region["min_lon"] + region["max_lon"]) / 2,
+        },
+        "source": "simulator",
+        "observed_at": datetime.now(timezone.utc).isoformat(),
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "measurements": {**values, "tier": tier, "simulated": True},
+        "is_simulation": True,
+        "simulation_tier": tier,
+    }
+    alerts.appendleft(record)
+    await sio.emit("climate_alert", record)
+    delivery_configured = get_configuration_status()["delivery_configured"]
+    if delivery_configured:
+        background_tasks.add_task(send_alert_to_subscribers, record)
+    return {
+        "alert": record,
+        "channels": {
+            "socket_io": "broadcasted",
+            "whatsapp": "queued" if delivery_configured else "not_configured",
+        },
+    }
 
 # @api_app.get("/api/disaster-intelligence/{region}")
 # async def get_disaster_intelligence(region: str):
@@ -1331,8 +1399,71 @@ do not pretend current hazard conditions are known.
         },
     }
 
-app = socketio.ASGIApp(sio, other_asgi_app=api_app)
+#------------------NEW CODE---------------#
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
+class DispatchChatRequest(BaseModel):
+    query: str
+    region: str = "vizag"
+    current_location: str = "Unknown" # Added to receive frontend location
+
+@api_app.post("/api/dispatch-chat")
+async def process_dispatch_chat(request: DispatchChatRequest):
+    # 1. LOAD THE LIVE REAL-WORLD INFRASTRUCTURE DATA
+    places_data = []
+    try:
+        # Call the function directly for live, updated data instead of reading a file
+        unified_data = run_ingestion(request.region)
+        places_data = unified_data.get("shelter", [])
+    except Exception as e:
+        print(f"Warning: Could not fetch live ingested data - {e}")
+
+    # 2. FEED REAL DATA INTO GEMINI
+    prompt = f"""
+    You are ClimaGuard Verified Dispatch, an AI tactical routing assistant for {request.region}.
+    
+    The user entered the command: "{request.query}"
+    
+    REAL-WORLD CRITICAL INFRASTRUCTURE DATA:
+    {json.dumps(places_data, indent=2) if places_data else "No live data available."}
+    
+    INSTRUCTIONS:
+    1. Extract the user's current location from their command (e.g., after 'loc -' or 'from -').
+    2. Identify what they need (e.g., Shelter, Hospital).
+    3. SEARCH the provided 'REAL-WORLD CRITICAL INFRASTRUCTURE DATA' and select the most relevant, ACTUAL place. Do not invent names.
+    4. Generate a tactical route from their location to the selected facility.
+    
+    You MUST output ONLY valid JSON matching this exact structure:
+    {{
+        "text": "Briefly list 2-3 real nearby facilities found in the data, then state which one you are routing them to.",
+        "verifiedRoute": {{
+            "origin": "User's extracted location",
+            "destination": "EXACT name of the facility from the JSON data",
+            "clearanceStatus": "VERIFIED_CLEAR, CAUTION_RESTRICTED, or IMPASSABLE_FLOOD",
+            "waterDepth": "e.g., '0.45m max (Coastal stretch)'",
+            "recommendedPath": "Clear, tactical driving instructions.",
+            "waypoints": ["Point 1", "Point 2", "Point 3"],
+            "sensorVerification": "e.g., 'GloFAS Bridge Anemometer'",
+            "validityWindow": "e.g., 'Valid for next 45 minutes'"
+        }}
+    }}
+    """
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.5-flash-lite",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.2, 
+            ),
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"Chat API Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate route clearance")
+
+app = socketio.ASGIApp(sio, other_asgi_app=api_app)
 
 if __name__ == "__main__":
     import uvicorn

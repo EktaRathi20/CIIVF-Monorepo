@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  CheckCircle2, Clock, AlertTriangle, Plus, 
+  CheckCircle2, Clock, AlertTriangle, LoaderCircle, Plus, 
   ArrowRight, Shield, Send, Users, ChevronRight, Check, MapPin
 } from 'lucide-react';
 import { MapComponent } from '../MapComponent';
@@ -144,6 +144,7 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
           Disaster intelligence could not be loaded: {error}
         </div>
       )}
+      {isLoading && <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-medium text-cyan-950"><LoaderCircle size={14} className="animate-spin" />Loading live response recommendations and mapped resources…</div>}
       {disasterIntelligence?.data_quality.ingestion_error && (
         <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           Ingestion is incomplete: {disasterIntelligence.data_quality.ingestion_error}
@@ -160,6 +161,7 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
           bounds={bounds}
           pois={pois}
           riskZones={disasterIntelligence?.risk_zones ?? []}
+          isLoading={isLoading}
           emptyMessage="Facility locations were not returned for this region."
         />
       </section>

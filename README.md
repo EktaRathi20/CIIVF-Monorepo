@@ -22,6 +22,80 @@ This repository contains a React/Vite frontend and a Python FastAPI + Socket.IO 
 
 ```mermaid
 flowchart LR
+    subgraph External [External Data Sources]
+        NOAA["NOAA IBTrACS\n(Historical Baselines)"]
+        MET["Google Weather & Ocean Sensors\n(Live Telemetry)"]
+        POP["WorldPop API\n(Demographics)"]
+        GEE["Google Earth Engine\n(Satellite & Radar)"]
+        PLACES["Google Places API\n(Hospitals & Shelters)"]
+    end
+
+    subgraph Backend [CIIVF Backend - FastAPI]
+        INGEST["Ingestion & Normalization\n(Schema Validation)"]
+        CACHE[("In-Memory Cache\n(TTL & Rate Defense)")]
+        FALLBACK{"Live Data\nActive?"}
+        STATIC[("Local Region Fallback\n(Static Baselines)")]
+        SCREEN["Deterministic Risk Screening\n(Rule-Based Scoring)"]
+        PAYLOAD["API Gateway\n(Unified JSON Response)"]
+        
+        NOAA --> INGEST
+        MET --> INGEST
+        POP --> INGEST
+        GEE --> INGEST
+        PLACES --> INGEST
+        
+        INGEST --> CACHE
+        CACHE --> FALLBACK
+        FALLBACK -- Yes --> SCREEN
+        FALLBACK -- No --> STATIC
+        STATIC --> SCREEN
+    end
+
+    subgraph AILayer [Google Cloud AI Layer]
+        VERTEX["Vertex AI AutoML\n(23-Feature Tabular Classifier)"]
+        GUARDRAILS["Anti-Hallucination Guardrails\n(Data Integrity Check)"]
+        GEMINI["Gemini Reasoning\n(Tactical Action Plans)"]
+        
+        SCREEN --> VERTEX
+        SCREEN --> GUARDRAILS
+        VERTEX --> GUARDRAILS
+        GUARDRAILS --> GEMINI
+    end
+
+    %% Routing AI and Screen outputs to the unified payload builder
+    GEMINI --> PAYLOAD
+    SCREEN --> PAYLOAD
+
+    subgraph Frontend [Frontend Command Console - React]
+        DASH["Unified Command Dashboard\n(Role-Based Workspaces)"]
+        SIM["Zone Event Simulator\n(48-hour Budget Sandbox)"]
+        MAPS["Geospatial GIS\n(Google Maps Vector Routing)"]
+        
+        PAYLOAD --> DASH
+        PAYLOAD --> MAPS
+        DASH <--> SIM
+        DASH <--> MAPS
+    end
+
+    subgraph Execution [Execution and Recovery Operations]
+        EVAC["Targeted Evacuations & Tactical Dispatch"]
+        INSURE["Parametric Insurance Payouts\n(Automated Smart Contracts)"]
+        
+        MAPS --> EVAC
+        PAYLOAD --> INSURE
+    end
+```
+
+
+
+
+
+
+
+
+
+```mermaid
+flowchart LR
   Browser[React + Vite dashboard]
   API[FastAPI routes]
   Socket[Socket.IO over ASGI]

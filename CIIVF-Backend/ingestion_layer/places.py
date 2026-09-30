@@ -1,70 +1,42 @@
 import os
 import requests
-import json
 import math
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import timedelta
 from dotenv import load_dotenv
+from ingestion_layer.cache import load_json_cache, save_json_cache
 from ingestion_layer.constant import get_region_coords, REGION_DATA
 
 load_dotenv()
 
 PLACES_CACHE_TTL = timedelta(hours=24)
-INGESTED_DIR = Path(__file__).resolve().parent.parent / "data" / "ingested"
 
 
 def _load_recent_places(region_key, radius_meters):
     if region_key not in REGION_DATA:
         return None
 
-    cache_path = INGESTED_DIR / f"places_{region_key}.json"
-    try:
-        with cache_path.open(encoding="utf-8") as cache_file:
-            cached_data = json.load(cache_file)
-
-        if (
-            not isinstance(cached_data, dict)
-            or cached_data.get("region_target") != region_key
-            or cached_data.get("radius_meters") != radius_meters
-        ):
-            return None
-
-        facilities = cached_data.get("facilities")
-        if not isinstance(facilities, dict) or facilities.get("source_errors"):
-            return None
-
-        timestamp_value = cached_data.get("timestamp")
-        if not isinstance(timestamp_value, str):
-            return None
-        timestamp = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
-        age = datetime.now(timezone.utc) - timestamp
-        if timedelta(0) <= age <= PLACES_CACHE_TTL:
-            return facilities
-    except (OSError, ValueError, TypeError):
-        pass
-
-    return None
+    return load_json_cache(
+        f"places_{region_key}.json",
+        PLACES_CACHE_TTL,
+        payload_key="facilities",
+        region_key=region_key,
+        expected_metadata={"radius_meters": radius_meters},
+        validator=lambda facilities: (
+            isinstance(facilities, dict) and not facilities.get("source_errors")
+        ),
+    )
 
 
 def _save_places(region_key, radius_meters, facilities):
     if facilities.get("source_errors"):
         return
 
-    cache_data = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "region_target": region_key,
-        "radius_meters": radius_meters,
-        "facilities": facilities,
-    }
-    cache_path = INGESTED_DIR / f"places_{region_key}.json"
-    try:
-        INGESTED_DIR.mkdir(parents=True, exist_ok=True)
-        with cache_path.open("w", encoding="utf-8") as cache_file:
-            json.dump(cache_data, cache_file, indent=2)
-    except OSError as error:
-        print(f"[PLACES] Unable to save cache: {error}")
+    save_json_cache(
+        f"places_{region_key}.json",
+        facilities,
+        payload_key="facilities",
+        metadata={"region_target": region_key, "radius_meters": radius_meters},
+    )
 
 
 def _distance_meters(lat_a, lon_a, lat_b, lon_b):

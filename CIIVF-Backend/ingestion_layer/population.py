@@ -1,50 +1,30 @@
 import ee
-import json
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timedelta
+from ingestion_layer.cache import load_json_cache, save_json_cache
 from ingestion_layer.constant import get_region_coords
 
 POPULATION_CACHE_TTL = timedelta(hours=24)
-INGESTED_DIR = Path(__file__).resolve().parent.parent / "data" / "ingested"
 
 
 def _load_recent_population(region_key):
-    cache_path = INGESTED_DIR / f"population_{region_key}.json"
-    try:
-        with cache_path.open(encoding="utf-8") as cache_file:
-            cached_data = json.load(cache_file)
-
-        if not isinstance(cached_data, dict) or cached_data.get("region_target") != region_key:
-            return None
-        if cached_data.get("source_error") or cached_data.get("total_population", 0) <= 0:
-            return None
-
-        timestamp_value = cached_data.get("timestamp")
-        if not isinstance(timestamp_value, str):
-            return None
-        timestamp = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
-        age = datetime.now(timezone.utc) - timestamp
-        if timedelta(0) <= age <= POPULATION_CACHE_TTL:
-            return cached_data
-    except (OSError, ValueError, TypeError, KeyError):
-        pass
-
-    return None
+    return load_json_cache(
+        f"population_{region_key}.json",
+        POPULATION_CACHE_TTL,
+        region_key=region_key,
+        validator=lambda data: (
+            isinstance(data, dict)
+            and not data.get("source_error")
+            and isinstance(data.get("total_population"), (int, float))
+            and data["total_population"] > 0
+        ),
+    )
 
 
 def _save_population(region_key, population_data):
     if population_data.get("source_error") or population_data.get("total_population") is None:
         return
 
-    INGESTED_DIR.mkdir(parents=True, exist_ok=True)
-    cache_path = INGESTED_DIR / f"population_{region_key}.json"
-    try:
-        with cache_path.open("w", encoding="utf-8") as cache_file:
-            json.dump(population_data, cache_file, indent=2)
-    except OSError as error:
-        print(f"[POPULATION] Unable to save cache: {error}")
+    save_json_cache(f"population_{region_key}.json", population_data)
 
 
 def fetch_population(region_key="vizag"):

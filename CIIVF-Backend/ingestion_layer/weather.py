@@ -1,66 +1,14 @@
 import os
-import json
 import requests
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from dotenv import load_dotenv
+from ingestion_layer.cache import load_json_cache, save_json_cache
 from ingestion_layer.constant import get_region_coords
 
 load_dotenv()
 
 TELEMETRY_CACHE_TTL = timedelta(minutes=10)
 FORECAST_CACHE_TTL = timedelta(hours=6)
-INGESTED_DIR = Path(__file__).resolve().parent.parent / "data" / "ingested"
-
-
-def _load_recent_cache(filename, region_key, max_age, wrapped=False):
-    cache_path = INGESTED_DIR / filename
-    try:
-        with cache_path.open(encoding="utf-8") as cache_file:
-            cached_data = json.load(cache_file)
-
-        if not isinstance(cached_data, dict):
-            return None
-        if wrapped:
-            cache_region = cached_data.get("region_target")
-            timestamp_value = cached_data.get("timestamp")
-            payload = cached_data.get("data")
-        else:
-            cache_region = cached_data.get("region_target")
-            timestamp_value = cached_data.get("timestamp")
-            payload = cached_data
-        if cache_region != region_key or not isinstance(payload, dict):
-            return None
-        if not isinstance(timestamp_value, str):
-            return None
-
-        timestamp = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
-        age = datetime.now(timezone.utc) - timestamp
-        if timedelta(0) <= age <= max_age:
-            return payload
-    except (OSError, ValueError, TypeError):
-        pass
-
-    return None
-
-
-def _save_cache(filename, region_key, payload, wrapped=False):
-    cache_data = payload
-    if wrapped:
-        cache_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "region_target": region_key,
-            "data": payload,
-        }
-
-    try:
-        INGESTED_DIR.mkdir(parents=True, exist_ok=True)
-        with (INGESTED_DIR / filename).open("w", encoding="utf-8") as cache_file:
-            json.dump(cache_data, cache_file, indent=2)
-    except OSError as error:
-        print(f"[WEATHER] Unable to save cache: {error}")
 
 
 def _description_text(description):
@@ -188,8 +136,8 @@ def _fallback_forecast(region_key, coords, primary_error):
 
 def fetch_meteorological_telemetry(region_key="vizag"):
     cache_filename = f"telemetry_{region_key}.json"
-    cached_data = _load_recent_cache(
-        cache_filename, region_key, TELEMETRY_CACHE_TTL
+    cached_data = load_json_cache(
+        cache_filename, TELEMETRY_CACHE_TTL, region_key=region_key
     )
     if cached_data is not None:
         return cached_data
@@ -202,7 +150,7 @@ def fetch_meteorological_telemetry(region_key="vizag"):
             coords,
             "GOOGLE_MAPS_API_KEY is not configured",
         )
-        _save_cache(cache_filename, region_key, weather_data)
+        save_json_cache(cache_filename, weather_data)
         return weather_data
 
     url = f"https://weather.googleapis.com/v1/currentConditions:lookup?key={google_api_key}&location.latitude={coords['lat']}&location.longitude={coords['lon']}"
@@ -214,11 +162,11 @@ def fetch_meteorological_telemetry(region_key="vizag"):
             coords,
             f"Google Weather API request failed: {error}",
         )
-        _save_cache(cache_filename, region_key, weather_data)
+        save_json_cache(cache_filename, weather_data)
         return weather_data
     if response.status_code != 200:
         weather_data = _fallback_current_conditions(region_key, coords, _provider_error(response))
-        _save_cache(cache_filename, region_key, weather_data)
+        save_json_cache(cache_filename, weather_data)
         return weather_data
 
     weather_data = response.json()
@@ -243,14 +191,17 @@ def fetch_meteorological_telemetry(region_key="vizag"):
         "source": "Google Weather API",
         "source_fallback": False,
     }
-    _save_cache(cache_filename, region_key, weather_data)
+    save_json_cache(cache_filename, weather_data)
     return weather_data
 
 
 def fetch_7_day_forecast(region_key="vizag"):
     cache_filename = f"forecast_{region_key}.json"
-    cached_data = _load_recent_cache(
-        cache_filename, region_key, FORECAST_CACHE_TTL, wrapped=True
+    cached_data = load_json_cache(
+        cache_filename,
+        FORECAST_CACHE_TTL,
+        payload_key="data",
+        region_key=region_key,
     )
     if cached_data is not None:
         return cached_data
@@ -259,7 +210,12 @@ def fetch_7_day_forecast(region_key="vizag"):
     coords = get_region_coords(region_key)
     if not google_api_key:
         forecast_data = _fallback_forecast(region_key, coords, "GOOGLE_MAPS_API_KEY is not configured")
-        _save_cache(cache_filename, region_key, forecast_data, wrapped=True)
+        save_json_cache(
+            cache_filename,
+            forecast_data,
+            payload_key="data",
+            metadata={"region_target": region_key},
+        )
         return forecast_data
 
     url = f"https://weather.googleapis.com/v1/forecast/days:lookup?key={google_api_key}&location.latitude={coords['lat']}&location.longitude={coords['lon']}&days=7"
@@ -267,11 +223,21 @@ def fetch_7_day_forecast(region_key="vizag"):
         response = requests.get(url, timeout=20)
     except requests.RequestException as error:
         forecast_data = _fallback_forecast(region_key, coords, f"Google Weather API request failed: {error}")
-        _save_cache(cache_filename, region_key, forecast_data, wrapped=True)
+        save_json_cache(
+            cache_filename,
+            forecast_data,
+            payload_key="data",
+            metadata={"region_target": region_key},
+        )
         return forecast_data
     if response.status_code != 200:
         forecast_data = _fallback_forecast(region_key, coords, _provider_error(response))
-        _save_cache(cache_filename, region_key, forecast_data, wrapped=True)
+        save_json_cache(
+            cache_filename,
+            forecast_data,
+            payload_key="data",
+            metadata={"region_target": region_key},
+        )
         return forecast_data
 
     weather_data = response.json()
@@ -299,5 +265,10 @@ def fetch_7_day_forecast(region_key="vizag"):
         "source": "Google Weather API",
         "source_fallback": False,
     }
-    _save_cache(cache_filename, region_key, forecast_data, wrapped=True)
+    save_json_cache(
+        cache_filename,
+        forecast_data,
+        payload_key="data",
+        metadata={"region_target": region_key},
+    )
     return forecast_data

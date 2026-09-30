@@ -1,6 +1,7 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
+from ingestion_layer.cache import INGESTED_DIR, load_json_cache, save_json_cache
 from ingestion_layer.gee import init_gee, fetch_sar_imagery, REGION_DATA
 from ingestion_layer.weather import fetch_meteorological_telemetry
 from ingestion_layer.weather import fetch_7_day_forecast
@@ -8,7 +9,6 @@ from ingestion_layer.population import fetch_population
 from ingestion_layer.disaster_history import fetch_historical_disasters
 from ingestion_layer.places import fetch_critical_infrastructure
 
-INGESTED_DIR = Path(__file__).resolve().parent.parent / "data" / "ingested"
 RUN_INGESTION_CACHE_TTL = timedelta(hours=6)
 
 
@@ -17,24 +17,17 @@ def _load_recent_ingestion(region):
     if region_metadata is None:
         return None
 
-    cache_path = INGESTED_DIR / f"unified_payload_{region}.json"
     image_path = INGESTED_DIR / f"scan_{region}.png"
-    try:
-        with cache_path.open(encoding="utf-8") as cache_file:
-            cached_payload = json.load(cache_file)
-        if not isinstance(cached_payload, dict):
-            return None
-        if cached_payload.get("region_metadata") != region_metadata or not image_path.is_file():
-            return None
-
-        modified_at = datetime.fromtimestamp(cache_path.stat().st_mtime, timezone.utc)
-        age = datetime.now(timezone.utc) - modified_at
-        if timedelta(0) <= age <= RUN_INGESTION_CACHE_TTL:
-            return cached_payload
-    except (OSError, ValueError, TypeError):
-        pass
-
-    return None
+    return load_json_cache(
+        f"unified_payload_{region}.json",
+        RUN_INGESTION_CACHE_TTL,
+        use_file_mtime=True,
+        validator=lambda payload: (
+            isinstance(payload, dict)
+            and payload.get("region_metadata") == region_metadata
+            and image_path.is_file()
+        ),
+    )
 
 
 def run_ingestion(region="vizag"):
@@ -94,8 +87,7 @@ def run_ingestion(region="vizag"):
     }
 
     compiled_filepath = output_dir / f"unified_payload_{region}.json"
-    with open(compiled_filepath, "w") as f:
-        json.dump(compiled_payload, f, indent=2)
+    save_json_cache(compiled_filepath.name, compiled_payload)
 
     return compiled_payload
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
-import { Hospital, Home, MapPin } from 'lucide-react';
-import { ApiRegion } from '../api';
+import { Circle, CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
+import { Hospital, Home, LoaderCircle, MapPin } from 'lucide-react';
+import { ApiRegion, DisasterRiskZone } from '../api';
 import { MapPOI } from '../types';
 
 interface MapComponentProps {
@@ -19,7 +19,9 @@ interface MapComponentProps {
   pois?: MapPOI[];
   cityLabel?: string;
   bounds?: ApiRegion;
+  riskZones?: DisasterRiskZone[];
   emptyMessage?: string;
+  isLoading?: boolean;
 }
 
 function FitRegionBounds({ bounds }: { bounds: ApiRegion }) {
@@ -42,11 +44,17 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   pois = [],
   cityLabel = 'Selected region',
   bounds,
+  riskZones = [],
   emptyMessage = 'No mapped facility coordinates were returned.',
+  isLoading = false,
 }) => {
   const [activeType, setActiveType] = useState<'all' | 'shelter' | 'hospital'>('all');
   const visiblePois = pois.filter(poi =>
     (activeType === 'all' || poi.type === activeType) && poi.lat != null && poi.lon != null,
+  );
+  const visibleZones = riskZones.filter(
+    (zone): zone is typeof zone & { lat: number; lon: number } =>
+      Number.isFinite(zone.lat) && Number.isFinite(zone.lon) && zone.radius_km > 0,
   );
   const center: [number, number] = bounds
     ? [(bounds.min_lat + bounds.max_lat) / 2, (bounds.min_lon + bounds.max_lon) / 2]
@@ -60,6 +68,35 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         {bounds && <FitRegionBounds bounds={bounds} />}
+        {visibleZones.map(zone => {
+          const zoneColor = {
+            red: { stroke: '#dc2626', fill: '#ef4444' },
+            orange: { stroke: '#ea580c', fill: '#f97316' },
+            yellow: { stroke: '#d97706', fill: '#fbbf24' },
+            green: { stroke: '#059669', fill: '#10b981' },
+          }[zone.color];
+          return (
+          <Circle
+            key={zone.id}
+            center={[zone.lat, zone.lon]}
+            radius={zone.radius_km * 1000}
+            pathOptions={{
+              color: zoneColor.stroke,
+              weight: 2,
+              fillColor: zoneColor.fill,
+              fillOpacity: 0.18,
+              dashArray: '8 8',
+            }}
+          >
+            <Popup>
+              <div className="min-w-36">
+                <div className="font-semibold text-slate-900">{zone.label}</div>
+                <p className="mt-1 text-xs text-slate-600">{zone.description ?? 'Risk zone from disaster intelligence'}</p>
+              </div>
+            </Popup>
+          </Circle>
+          );
+        })}
         {visiblePois.map(poi => (
           <CircleMarker
             key={poi.id}
@@ -89,7 +126,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       <div className="absolute left-3 top-3 z-[1000] max-w-[55%] rounded-md border border-white/80 bg-white/95 px-3 py-2 shadow-sm backdrop-blur-sm">
         <div className="text-xs font-bold text-slate-900">{cityLabel}</div>
         <div className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-600">
-          <MapPin size={11} /> {pois.length} mapped facilities
+          <MapPin size={11} /> {visiblePois.length} facilities · {visibleZones.length} risk zones
         </div>
       </div>
 
@@ -106,12 +143,16 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         ))}
       </div>
 
-      {visiblePois.length === 0 && (
+      {isLoading ? (
+        <div role="status" aria-live="polite" className="pointer-events-none absolute inset-x-4 top-1/2 z-[900] mx-auto flex max-w-lg -translate-y-1/2 items-center justify-center gap-2 rounded-md border border-cyan-200 bg-white/95 px-4 py-3 text-center text-xs font-medium text-cyan-950 shadow-sm">
+          <LoaderCircle size={15} className="animate-spin" /> Loading map facilities and risk layers…
+        </div>
+      ) : visiblePois.length === 0 && visibleZones.length === 0 ? (
         <div className="pointer-events-none absolute inset-x-4 top-1/2 z-[900] mx-auto max-w-lg -translate-y-1/2 rounded-md border border-slate-200 bg-white/95 px-4 py-3 text-center shadow-sm">
           <p className="text-sm font-semibold text-slate-900">No facility markers for {cityLabel}</p>
           <p className="mt-1 break-words text-xs leading-relaxed text-slate-600">{emptyMessage}</p>
         </div>
-      )}
+      ) : null}
     </section>
   );
 };

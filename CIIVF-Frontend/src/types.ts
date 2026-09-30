@@ -4,7 +4,8 @@ export type OperationalMode =
   | 'threat'         // Amber Mode: Threat detection, T-48 Countdown, What-If slider
   | 'tasks'          // Task management & Evacuation, Kanban board, Ward 17 & corridor
   | 'landfall'       // Red Mode: Landfall rescue, Critical Alert banner, Dispatch Chat
-  | 'recovery';      // Insurance & Recovery, Before/After flood slider, Parametric funds, SDG
+  | 'recovery'       // Insurance & Recovery, Before/After flood slider, Parametric funds, SDG
+  | 'simulator';     // Interactive risk scenario sandbox
 
 export type UserRole = 
   | 'municipal_commissioner'

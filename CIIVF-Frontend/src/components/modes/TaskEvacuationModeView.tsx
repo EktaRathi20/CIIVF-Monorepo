@@ -1,14 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
-  CheckCircle2, Clock, AlertTriangle, Plus, 
-  ArrowRight, Shield, Send, Users, ChevronRight, Check
+  CheckCircle2, Clock, AlertTriangle, LoaderCircle, Plus, 
+  ArrowRight, Shield, Send, Users, ChevronRight, Check, MapPin
 } from 'lucide-react';
 import { MapComponent } from '../MapComponent';
 import { TaskItem, CityLocation } from '../../types';
-import { INITIAL_TASKS } from '../../data/mockData';
+import { ApiRegion, DisasterIntelligenceResponse } from '../../api';
+import { MapPOI } from '../../types';
 
 interface TaskEvacuationModeViewProps {
   city: CityLocation;
+  bounds: ApiRegion;
+  pois: MapPOI[];
+  disasterIntelligence: DisasterIntelligenceResponse | null;
+  isLoading: boolean;
+  error: string | null;
   showMangroveLayer: boolean;
   onToggleMangrove: (val: boolean) => void;
   showHistoricalLayer: boolean;
@@ -19,6 +25,11 @@ interface TaskEvacuationModeViewProps {
 
 export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
   city,
+  bounds,
+  pois,
+  disasterIntelligence,
+  isLoading,
+  error,
   showMangroveLayer,
   onToggleMangrove,
   showHistoricalLayer,
@@ -26,11 +37,43 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
   onOpenEvacuationModal,
   isLightMode = true,
 }) => {
-  const [tasks, setTasks] = useState<TaskItem[]>(INITIAL_TASKS);
+  const recommendations = disasterIntelligence?.ai_analysis.recommended_tasks;
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskWard, setNewTaskWard] = useState('Ward 17');
+  const [newTaskWard, setNewTaskWard] = useState(city.name);
   const [newTaskDept, setNewTaskDept] = useState<TaskItem['department']>('Municipal Corp');
+
+  useEffect(() => {
+    setTasks((recommendations ?? []).map((task, index) => {
+      const department = task.department.toLowerCase();
+      const priority = task.priority?.toLowerCase();
+      const mappedDepartment: TaskItem['department'] = department.includes('ndrf')
+        ? 'NDRF'
+        : department.includes('pwd')
+          ? 'PWD Water Supply'
+          : department.includes('health') || department.includes('ems')
+            ? 'Health & EMS'
+            : department.includes('power') || department.includes('electric')
+              ? 'Power Utility'
+              : 'Municipal Corp';
+
+      return {
+        id: `${disasterIntelligence?.region ?? city.id}-${index}-${task.department}-${task.location}`,
+        title: task.description,
+        department: mappedDepartment,
+        priority: priority === 'critical' ? 'Critical' : priority === 'high' ? 'High' : 'Medium',
+        status: 'pending',
+        ward: task.location || city.name,
+        assignee: task.sub_team || task.department,
+        timeRemaining: task.status_text || undefined,
+      };
+    }));
+  }, [city.id, city.name, disasterIntelligence?.region, recommendations]);
+
+  useEffect(() => {
+    setNewTaskWard(city.name);
+  }, [city.name]);
 
   const moveTask = (id: string, targetStatus: TaskItem['status']) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status: targetStatus } : t));
@@ -47,8 +90,7 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
       priority: 'High',
       status: 'pending',
       ward: newTaskWard,
-      assignee: 'Rapid Response Team',
-      timeRemaining: 'T-24h Target'
+      assignee: 'Locally added',
     };
 
     setTasks(prev => [newTask, ...prev]);
@@ -97,7 +139,49 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
         </button>
       </div>
 
-      {/* Clean Kanban-Style Board (Pending, In-Progress, Done) for Municipal Tasks */}
+      {error && !disasterIntelligence && (
+        <div role="status" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+          Disaster intelligence could not be loaded: {error}
+        </div>
+      )}
+      {isLoading && <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-medium text-cyan-950"><LoaderCircle size={14} className="animate-spin" />Loading live response recommendations and mapped resources…</div>}
+      {disasterIntelligence?.data_quality.ingestion_error && (
+        <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Ingestion is incomplete: {disasterIntelligence.data_quality.ingestion_error}
+        </div>
+      )}
+
+      <section className={`overflow-hidden rounded-xl border shadow-sm ${isLightMode ? 'border-slate-200 bg-white' : 'border-slate-800 bg-slate-900'}`}>
+        <div className={`flex items-center justify-between border-b px-4 py-3 ${isLightMode ? 'border-slate-100 bg-slate-50' : 'border-slate-800 bg-slate-950'}`}>
+          <h3 className={`flex items-center gap-2 text-sm font-bold ${isLightMode ? 'text-slate-800' : 'text-white'}`}><MapPin size={15} className="text-blue-600" /> Risk zones & response resources</h3>
+          <span className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>{disasterIntelligence?.risk_zones.length ?? 0} API zones</span>
+        </div>
+        <MapComponent
+          cityLabel={city.name}
+          bounds={bounds}
+          pois={pois}
+          riskZones={disasterIntelligence?.risk_zones ?? []}
+          isLoading={isLoading}
+          emptyMessage="Facility locations were not returned for this region."
+        />
+      </section>
+
+      {disasterIntelligence?.risk_zones.length ? (
+        <section className={`grid grid-cols-1 gap-2 sm:grid-cols-2 ${disasterIntelligence.risk_zones.length > 2 ? 'xl:grid-cols-3' : ''}`} aria-label="Risk zone details">
+          {disasterIntelligence.risk_zones.map(zone => (
+            <div key={zone.id} className={`rounded-lg border p-3 ${zone.color === 'red' ? 'border-rose-200 bg-rose-50' : zone.color === 'orange' ? 'border-orange-200 bg-orange-50' : zone.color === 'yellow' ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <strong className="text-xs text-slate-900">{zone.label}</strong>
+                <span className="text-[10px] font-semibold uppercase text-slate-600">{zone.radius_km} km radius</span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-slate-700">{zone.description ?? 'Screening zone from disaster intelligence.'}</p>
+              {zone.basis?.length ? <p className="mt-1 text-[10px] text-slate-500">Basis: {zone.basis.join(' · ')}</p> : null}
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {/* API-recommended tasks with local, in-session progress controls. */}
       <div className={`border rounded-xl p-4 shadow-sm transition-colors ${
         isLightMode
           ? 'bg-white border-slate-200/90'
@@ -109,7 +193,7 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
               Municipal Emergency Task Operations
             </h3>
             <p className={`text-[11px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
-              Assigned to PWD, NDRF, Municipal Corporation, and EMS response battalions.
+              Actions recommended from the selected region's disaster-intelligence response.
             </p>
           </div>
           <button
@@ -161,6 +245,18 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
                 <option value="Health & EMS">Health & EMS</option>
                 <option value="Power Utility">Power Utility</option>
               </select>
+              <input
+                type="text"
+                aria-label="Task location"
+                placeholder="Location or area"
+                value={newTaskWard}
+                onChange={(e) => setNewTaskWard(e.target.value)}
+                className={`sm:col-span-3 rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 ${
+                  isLightMode
+                    ? 'bg-white border border-slate-300 text-slate-900 placeholder-slate-400'
+                    : 'bg-slate-900 border border-slate-700 text-white placeholder-slate-500'
+                }`}
+              />
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button
@@ -247,7 +343,7 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
               ))}
               {pendingTasks.length === 0 && (
                 <div className="text-center py-6 text-slate-400 text-xs italic">
-                  No pending tasks
+                  {isLoading ? 'Loading API recommendations…' : disasterIntelligence ? 'No API-recommended pending tasks' : 'No disaster-intelligence response available'}
                 </div>
               )}
             </div>
@@ -405,6 +501,9 @@ export const TaskEvacuationModeView: React.FC<TaskEvacuationModeViewProps> = ({
           </div>
         </div>
       </div>
+      <p className={`text-[10px] ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
+        Progress changes and manually added tasks are local to this session; the API does not persist task status.
+      </p>
     </div>
   );
 };

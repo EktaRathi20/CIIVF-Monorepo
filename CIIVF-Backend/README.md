@@ -5,7 +5,7 @@ FastAPI service for the CIIVF climate-risk dashboard. The system architecture an
 ## Stack and Modules
 
 - Python 3.10+ (Python 3.11+ recommended), FastAPI, Pydantic, Uvicorn, and Python Socket.IO.
-- Google Weather API for current conditions and forecast.
+- Google Weather API for current conditions and forecast, with Open-Meteo fallback when Google Weather is unavailable.
 - Google Places API (New) for nearby hospitals and shelters.
 - Google Earth Engine / WorldPop for population estimates; Sentinel-1 SAR retrieval is available in the ingestion module.
 - NOAA IBTrACS North Indian Ocean CSV for historical cyclone tracks. Results are grouped by storm and region, with an in-process six-hour cache.
@@ -151,7 +151,8 @@ Verified numbers are stored in SQLite at `.local/whatsapp.sqlite3` by default; k
 
 ## Provider and Data Notes
 
-- Google Weather/Places require enabled services and valid server-side credentials. Provider failures are returned as errors/diagnostics; a zero-result Places response can be valid for offshore areas or a narrow radius.
+- Google Weather is the primary weather source. If its key is missing, a request fails, or Google returns a non-200 response (including quota errors), current conditions and the seven-day forecast fall back to Open-Meteo. The existing response fields are preserved and include `source` / `source_fallback` metadata; verify provider attribution and current Open-Meteo terms before public or commercial deployment.
+- Google Places requires an enabled service and valid server-side credentials; it does not use the Open-Meteo fallback. A zero-result Places response can be valid for offshore areas or a narrow radius.
 - Nearby facilities are filtered to five kilometres of the selected region coordinates because Google Places text-search location bias is not a strict geographic restriction.
 - NOAA history uses the public North Indian Ocean IBTrACS archive, needs outbound network access, and is cached in process memory for six hours. Track data contains no storm-surge measurement; the API returns `null` for surge rather than estimating one.
 - Population is a WorldPop aggregation via Earth Engine and depends on a valid project/authentication and available raster coverage.

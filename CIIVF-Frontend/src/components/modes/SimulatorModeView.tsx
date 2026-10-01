@@ -46,9 +46,9 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
   const insurance = intelligence?.insurance_summary;
   const budget = intelligence?.preparedness_budget;
   const locations = [...new Set((intelligence?.ai_analysis.recommended_tasks ?? []).map(task => task.location).filter(Boolean))];
+  
   const [selectedWard, setSelectedWard] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [broadcastToken, setBroadcastToken] = useState('');
   const [isAlertOpen, setIsAlertOpen] = useState(true);
   const [whatsappConfiguration, setWhatsappConfiguration] = useState<WhatsAppConfigurationResponse | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
@@ -57,6 +57,7 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
   const [broadcastResult, setBroadcastResult] = useState<SimulatorBroadcastResponse | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [redZoneDeadline, setRedZoneDeadline] = useState<number | null>(null);
+  
   const whatsappPreview = broadcastResult?.whatsapp_preview ?? (
     tier
       ? `CIIVF SIMULATION EXERCISE, not a live or official warning. Zone: ${tier}. Area: ${selectedWard || regionName}, ${regionName}. Simulated conditions: wind ${conditions?.wind_speed_kmh ?? 'unavailable'} km/h, pressure ${conditions?.pressure_hpa ?? 'unavailable'} hPa, storm surge ${conditions?.storm_surge_meters?.toFixed(1) ?? 'unavailable'} m. This message is for testing only.`
@@ -93,18 +94,24 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
 
   const handleBroadcast = async () => {
     if (!tier || !selectedWard) return;
-    const token = broadcastToken.trim();
+    
+    // Fetch the token directly from Vite environment variables
+    const token = import.meta.env.VITE_SIMULATOR_BROADCAST_TOKEN;
+    
     if (!token) {
-      setBroadcastError('Enter the simulator access token configured by your administrator.');
+      setBroadcastError('Simulator access token is missing in the environment configuration (VITE_SIMULATOR_BROADCAST_TOKEN).');
       return;
     }
+    
     const recipient = whatsappNumber.trim();
     if (recipient && !PHONE_PATTERN.test(recipient)) {
       setBroadcastError('Enter the recipient WhatsApp number in international format, for example +14155552671.');
       return;
     }
+    
     setIsBroadcasting(true);
     setBroadcastError(null);
+    
     try {
       const result = await onBroadcast(tier, selectedWard, recipient || null, token);
       setBroadcastResult(result);
@@ -242,10 +249,6 @@ export const SimulatorModeView: React.FC<SimulatorModeViewProps> = ({
                 <ChannelStatus icon={connectionState === 'connected' ? <Wifi size={14} /> : <WifiOff size={14} />} label="Socket.IO" value={connectionState === 'connected' ? 'Connected' : connectionState === 'connecting' ? 'Connecting' : 'Disconnected'} />
                 <ChannelStatus icon={<BellRing size={14} />} label="Sandbox" value={whatsappConfiguration?.delivery_configured ? 'Ready for joined recipients' : configurationError ? 'Configuration unavailable' : 'Not configured'} />
               </div>
-
-              <label className="block text-xs font-semibold text-slate-700" htmlFor="sim-broadcast-token">Simulator access token
-                <input id="sim-broadcast-token" type="password" autoComplete="off" value={broadcastToken} onChange={event => setBroadcastToken(event.target.value)} className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100" />
-              </label>
 
               <label className="block text-xs font-semibold text-slate-700" htmlFor="sim-alert-whatsapp">WhatsApp recipient (optional)
                 <input id="sim-alert-whatsapp" type="tel" inputMode="tel" autoComplete="tel" value={whatsappNumber} onChange={event => setWhatsappNumber(event.target.value)} placeholder="+14155552671" className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100" />

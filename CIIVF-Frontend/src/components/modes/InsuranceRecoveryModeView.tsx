@@ -46,10 +46,10 @@ export const InsuranceRecoveryModeView: React.FC<InsuranceRecoveryModeViewProps>
                     ? triggerReached ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                     : 'bg-slate-50 text-slate-600 border-slate-200'
                 }`}>
-                  {insuranceEvaluated ? triggerReached ? 'Threshold reached' : 'Below threshold' : 'Not evaluated'}
+                  {insuranceEvaluated ? triggerReached ? 'Threshold reached' : 'Below threshold' : 'Unavailable'}
                 </span>
               </div>
-              <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${
+              <h1 className={`text-xl sm:text-xl font-black tracking-tight ${
                 isLightMode ? 'text-slate-900' : 'text-white'
               }`}>
                 {insuranceEvaluated
@@ -70,10 +70,10 @@ export const InsuranceRecoveryModeView: React.FC<InsuranceRecoveryModeViewProps>
               <span className={`text-[10px] uppercase font-mono ${isLightMode ? 'text-slate-500' : 'text-slate-400'}`}>
                 Disbursed Liquidity
               </span>
-              <div className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${
+              <div className={`text-xl sm:text-xl font-extrabold font-mono tracking-tight ${
                   isLightMode ? 'text-slate-900' : 'text-white'
               }`}>
-                {insuranceSummary?.estimated_payout_cr == null ? 'Not configured' : `₹${insuranceSummary.estimated_payout_cr.toFixed(2)} Cr`}
+                {insuranceSummary?.estimated_payout_cr == null ? 'Unavailable' : `₹${insuranceSummary.estimated_payout_cr.toFixed(2)} Cr`}
               </div>
               <span className={`text-[11px] font-mono ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
                 {insuranceSummary?.observed_water_depth_m == null ? 'Observed depth unavailable' : `${insuranceSummary.observed_water_depth_m.toFixed(2)} m observed`}
@@ -120,11 +120,11 @@ export const InsuranceRecoveryModeView: React.FC<InsuranceRecoveryModeViewProps>
               </div>
               <div className={`flex justify-between py-1 border-b ${isLightMode ? 'border-slate-100' : 'border-slate-800'}`}>
                 <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Trigger result:</span>
-                <span className={`font-mono font-semibold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{insuranceEvaluated ? triggerReached ? 'Reached' : 'Not reached' : 'Not evaluated'}</span>
+                <span className={`font-mono font-semibold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{insuranceEvaluated ? triggerReached ? 'Reached' : 'Not reached' : 'Unavailable'}</span>
               </div>
               <div className="flex justify-between py-1">
                 <span className={isLightMode ? 'text-slate-500' : 'text-slate-400'}>Payout amount:</span>
-                <span className={`font-mono font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{insuranceSummary?.estimated_payout_cr == null ? 'Not configured' : `₹${insuranceSummary.estimated_payout_cr.toFixed(2)} Cr`}</span>
+                <span className={`font-mono font-bold ${isLightMode ? 'text-slate-900' : 'text-white'}`}>{insuranceSummary?.estimated_payout_cr == null ? 'Unavailable' : `₹${insuranceSummary.estimated_payout_cr.toFixed(2)} Cr`}</span>
               </div>
             </div>
           </div>
